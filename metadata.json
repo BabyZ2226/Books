@@ -1,0 +1,6 @@
+{
+  "name": "BiblioNotas",
+  "description": "Una aplicación web amigable y fácil de usar para tomar anotaciones sobre los libros que lees.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": []
+}
