@@ -27,6 +27,15 @@ export interface Note {
   audioEndTime?: number;
 }
 
+export interface Insight {
+  id: string;
+  bookId: string;
+  title: string;
+  description: string;
+  type: 'connection' | 'epiphany' | 'application';
+  createdAt: number;
+}
+
 export interface Flashcard {
   id: string;
   bookId: string;

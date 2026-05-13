@@ -5,7 +5,7 @@ import { BookCard } from './components/BookCard';
 import { BookDetail } from './components/BookDetail';
 import { AddBookModal } from './components/AddBookModal';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookMarked, Plus, Library, Search, Clock, Calendar, User, Type, ArrowUp, ArrowDown, Sparkles, Brain, GraduationCap, TrendingUp } from 'lucide-react';
+import { BookMarked, Plus, Search, Clock, Calendar, User, Type, ArrowUp, ArrowDown } from 'lucide-react';
 
 type SortOption = 'title' | 'author' | 'addedAt' | 'lastUpdated';
 
@@ -99,21 +99,6 @@ export default function App() {
   };
 
   const selectedBook = selectedBookId ? books.find(b => b.id === selectedBookId) : null;
-
-  const dashboardStats = useMemo(() => {
-    const totalNotes = notes.length;
-    const totalGlossary = terms.length;
-    const favoriteNotes = notes.filter(n => n.isFavorite).length;
-    const booksRead = books.filter(b => b.status === 'Terminado').length;
-    
-    return {
-      wisdomScore: totalNotes * 10 + totalGlossary * 5 + favoriteNotes * 20,
-      totalNotes,
-      totalGlossary,
-      booksRead,
-      activeReading: books.filter(b => b.status === 'Leyendo').length
-    };
-  }, [books, notes, terms]);
 
   const filteredAndSortedBooks = useMemo(() => {
     let result = books.filter(b => 
@@ -234,61 +219,6 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             >
-              {books.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-20">
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="md:col-span-2 bg-black dark:bg-amber-500 rounded-3xl p-8 text-white dark:text-black flex flex-col justify-between relative overflow-hidden group"
-                  >
-                    <div className="relative z-10">
-                      <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mb-2 block">Puntuación de Sabiduría</span>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-6xl font-display font-black leading-none">{dashboardStats.wisdomScore}</span>
-                        <Sparkles size={20} className="animate-pulse" />
-                      </div>
-                    </div>
-                    <div className="mt-8 relative z-10">
-                      <p className="text-sm opacity-80 font-serif italic max-w-[240px]">
-                        Tu mente ha procesado {dashboardStats.totalNotes} revelaciones y {dashboardStats.totalGlossary} conceptos maestros.
-                      </p>
-                    </div>
-                    <TrendingUp size={160} className="absolute -right-10 -bottom-10 opacity-10 group-hover:scale-110 transition-transform duration-700" />
-                  </motion.div>
-
-                  <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 rounded-3xl p-6 flex flex-col justify-center">
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="p-3 bg-amber-50 dark:bg-amber-500/10 rounded-2xl text-amber-600 dark:text-amber-500">
-                        <Brain size={24} />
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 block">Enfoque</span>
-                        <span className="text-2xl font-display font-black dark:text-white">{dashboardStats.activeReading} Libros</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-1 bg-gray-50 dark:bg-white/5 rounded-full overflow-hidden">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${(dashboardStats.activeReading / (books.length || 1)) * 100}%` }}
-                        className="h-full bg-amber-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 rounded-3xl p-6 flex flex-col justify-center">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-green-50 dark:bg-green-500/10 rounded-2xl text-green-600 dark:text-green-500">
-                        <GraduationCap size={24} />
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 block">Maestría</span>
-                        <span className="text-2xl font-display font-black dark:text-white">{dashboardStats.booksRead} Terminados</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <div className="flex flex-col mb-12 gap-6">
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                   <div>
@@ -361,7 +291,7 @@ export default function App() {
                   No se encontraron libros que coincidan con tu búsqueda.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-8 gap-y-12 sm:gap-y-16 pt-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-8 gap-y-8 sm:gap-y-12 pt-4">
                   {filteredAndSortedBooks.map(book => (
                     <BookCard key={book.id} book={book} onClick={setSelectedBookId} onDelete={handleDeleteBook} />
                   ))}

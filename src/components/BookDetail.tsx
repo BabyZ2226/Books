@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ArrowLeft, BookOpen, Trash2, Edit3, Image as ImageIcon, Save, Plus, Star, BookText, GraduationCap, Sparkles, Loader2, Download, Mic, Square, Pause, Play, Send, Brain, MessageSquare, Zap, RotateCcw, BrainCircuit, Link2, ExternalLink, X, Maximize2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, BookOpen, Trash2, Edit3, Image as ImageIcon, Save, Plus, Star, BookText, GraduationCap, Sparkles, Loader2, Download, Mic, Square, Pause, Play, Send, Brain, MessageSquare, Zap, RotateCcw, BrainCircuit, Link2, ExternalLink, X, Maximize2, ChevronLeft, ChevronRight, List, LayoutGrid } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { Glossary } from './Glossary';
 import { ConfirmModal } from './ConfirmModal';
 import { GoogleGenAI } from '@google/genai';
-import { Book, Note, GlossaryTerm, Flashcard, ChatMessage, BookStatus } from '../types';
+import { Book, Note, GlossaryTerm, Flashcard, ChatMessage, BookStatus, Insight } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
 interface Props {
@@ -81,7 +81,7 @@ const FlashcardItem = ({ card, onDelete }: { card: Flashcard, onDelete: () => vo
 };
 
 export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteBook, onSaveNote, onDeleteNote, onToggleNoteFavorite, onAddTerm, onDeleteTerm }: Props) {
-  const [activeTab, setActiveTab] = useState<'notes' | 'glossary' | 'flashcards' | 'chat'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'glossary' | 'flashcards' | 'chat' | 'insights'>('notes');
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [currentNote, setCurrentNote] = useState('');
   const [currentReference, setCurrentReference] = useState('');
@@ -99,6 +99,10 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
   const [flashcards, setFlashcards] = useLocalStorage<Flashcard[]>(`flashcards-${book.id}`, []);
   const [isGeneratingCards, setIsGeneratingCards] = useState(false);
   
+  // Insights state
+  const [insights, setInsights] = useLocalStorage<Insight[]>(`insights-${book.id}`, []);
+  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+  
   // Chat state
   const [chatMessages, setChatMessages] = useLocalStorage<ChatMessage[]>(`chat-history-${book.id}`, []);
   const [currentInput, setCurrentInput] = useState('');
@@ -107,8 +111,7 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
   const [processingPhase, setProcessingPhase] = useState("");
   const [pendingAudio, setPendingAudio] = useLocalStorage<string | null>(`pending-audio-${book.id}`, null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  const [isImmersiveMode, setIsImmersiveMode] = useState(false);
-  const [currentImmersiveIndex, setCurrentImmersiveIndex] = useState(0);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Resume pending audio processing on mount
@@ -128,23 +131,6 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
     if (showFavoritesOnly) return note.isFavorite;
     return true;
   });
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isImmersiveMode) return;
-      
-      if (e.key === 'Escape') {
-        setIsImmersiveMode(false);
-      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        setCurrentImmersiveIndex(prev => Math.min(prev + 1, filteredNotes.length - 1));
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        setCurrentImmersiveIndex(prev => Math.max(prev - 1, 0));
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isImmersiveMode, filteredNotes.length]);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -433,7 +419,6 @@ Si no detectas una referencia clara, usa una descripción breve.`;
 
   const handleExportMarkdown = () => {
     let md = `# ${book.title}\n**Autor:** ${book.author}\n**Estado:** ${book.status}\n`;
-    if (book.rating) md += `**Calificación:** ${'⭐'.repeat(book.rating)}\n`;
     if (book.totalPages) md += `**Progreso:** ${book.currentPage || 0} / ${book.totalPages} páginas\n`;
     md += `\n---\n\n`;
 
@@ -500,6 +485,56 @@ Si no detectas una referencia clara, usa una descripción breve.`;
       console.error('Error generating cards:', error);
     } finally {
       setIsGeneratingCards(false);
+    }
+  };
+
+  const handleGenerateInsights = async () => {
+    if (notes.length === 0) {
+      alert("Añade algunas notas antes de revelar conexiones ocultas.");
+      return;
+    }
+    try {
+      setIsGeneratingInsights(true);
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const prompt = `Analiza profundamente las siguientes notas del libro "${book.title}" de ${book.author}.
+Tu objetivo es encontrar 3 conexiones ocultas, patrones profundos, o revelaciones (insights) únicas que crucen diferentes ideas del libro, y que el usuario podría no haber notado. 
+Cada insight debe pertenecer a una de estas categorías: 'connection' (conecta ideas del libro), 'epiphany' (una revelación filosófica o profunda) o 'application' (una aplicación revolucionaria a la vida real).
+Devuelve estrictamente un JSON con este formato exacto:
+{
+  "insights": [
+    {
+      "title": "Título corto y cautivador del insight",
+      "description": "Explicación detallada de la conexión o revelación descubierta.",
+      "type": "connection" | "epiphany" | "application"
+    }
+  ]
+}
+
+Notas:
+${notes.map(n => n.content).join('\n')}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: { responseMimeType: 'application/json' }
+      });
+      
+      const result = JSON.parse(response.text || '{}');
+      if (result.insights) {
+        const newInsights: Insight[] = result.insights.map((c: any) => ({
+          id: Math.random().toString(36).substr(2, 9),
+          bookId: book.id,
+          title: c.title,
+          description: c.description,
+          type: c.type,
+          createdAt: Date.now()
+        }));
+        setInsights(newInsights); // Update all
+      }
+    } catch (error) {
+      console.error('Error generating insights:', error);
+    } finally {
+      setIsGeneratingInsights(false);
     }
   };
 
@@ -634,7 +669,7 @@ Si no detectas una referencia clara, usa una descripción breve.`;
       </motion.button>
 
       <div className="flex flex-col lg:flex-row gap-8 lg:gap-16 mb-12">
-        <div className="w-full lg:w-56 shrink-0 flex flex-col gap-6">
+        <div className="w-full max-w-[240px] sm:max-w-xs mx-auto lg:mx-0 lg:w-56 shrink-0 flex flex-col gap-6">
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -765,20 +800,6 @@ Si no detectas una referencia clara, usa una descripción breve.`;
               </motion.h1>
               <div className="flex flex-wrap items-center gap-6">
                 <p className="text-xl text-gray-400 dark:text-gray-500 font-serif italic">{book.author}</p>
-                <div className="flex items-center space-x-1 bg-white/50 dark:bg-white/5 px-5 py-3 rounded-3xl border border-gray-100/50 dark:border-white/5">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      onClick={() => onUpdateBook({ ...book, rating: book.rating === star ? 0 : star })}
-                      className={`p-1 hover:scale-125 transition-all focus:outline-none ${
-                        (book.rating || 0) >= star ? 'text-amber-400' : 'text-gray-200 dark:text-gray-800 hover:text-amber-200'
-                      }`}
-                      title={`${star} estrellas`}
-                    >
-                      <Star size={20} fill={(book.rating || 0) >= star ? 'currentColor' : 'none'} />
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
 
@@ -933,6 +954,18 @@ Si no detectas una referencia clara, usa una descripción breve.`;
               )}
             </button>
             <button
+              onClick={() => setActiveTab('insights')}
+              className={`pb-4 text-xs md:text-sm uppercase tracking-[0.2em] font-black transition-all relative whitespace-nowrap px-2 ${activeTab === 'insights' ? 'text-gray-900 dark:text-white' : 'text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400'}`}
+            >
+              <div className="flex items-center space-x-2">
+                <Zap size={16} />
+                <span>Conexiones</span>
+              </div>
+              {activeTab === 'insights' && (
+                <motion.div layoutId="activeTabIndicator" className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500 rounded-full" />
+              )}
+            </button>
+            <button
               onClick={() => setActiveTab('chat')}
               className={`pb-4 text-xs md:text-sm uppercase tracking-[0.2em] font-black transition-all relative whitespace-nowrap px-2 ${activeTab === 'chat' ? 'text-gray-900 dark:text-white' : 'text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400'}`}
             >
@@ -956,51 +989,53 @@ Si no detectas una referencia clara, usa una descripción breve.`;
             </div>
           </div>
 
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-lg z-50 md:relative md:bottom-auto md:left-auto md:translate-x-0 md:w-full md:max-w-none md:mb-10">
-            <div className="bg-gray-900/95 backdrop-blur-xl p-3 rounded-[2.5rem] shadow-2xl flex items-center justify-between gap-3 border border-white/10">
-              <div className="flex-1">
-                <AnimatePresence mode="wait">
-                  {isRecording ? (
+          <AnimatePresence>
+            {isRecording && (
+              <motion.div 
+                key="recording-ui"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="fixed inset-0 z-[100] bg-gray-950 flex flex-col items-center justify-center p-8 backdrop-blur-3xl"
+              >
+                  <div className="flex flex-col items-center gap-8 md:gap-10">
+                  <div className="flex justify-center">
                     <motion.div 
-                      key="recording-ui"
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      className="flex items-center gap-4 bg-white/10 px-5 py-2.5 rounded-[1.75rem]"
+                      animate={{ scale: [1, 1.5, 1] }} 
+                      transition={{ repeat: Infinity, duration: 2 }}
+                      className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-red-500 shadow-[0_0_30px_rgba(239,68,68,0.8)]" 
+                    />
+                  </div>
+                  
+                  <div className="text-6xl sm:text-7xl md:text-8xl font-mono font-black text-white tracking-widest tabular-nums font-bold">
+                    {formatTime(recordingTime)}
+                  </div>
+
+                  <div className="flex items-center gap-6 md:gap-8 mt-4">
+                    <button
+                      onClick={isPaused ? resumeRecording : pauseRecording}
+                      className="w-20 h-20 md:w-24 md:h-24 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full text-white transition-all backdrop-blur-md"
                     >
-                      <div className="flex items-center gap-3">
-                        <motion.div 
-                          animate={{ scale: [1, 1.2, 1] }} 
-                          transition={{ repeat: Infinity, duration: 1.5 }}
-                          className={`w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]`} 
-                        />
-                        <span className="text-sm font-mono font-bold text-white/90 tracking-tight">{formatTime(recordingTime)} / 20:00</span>
-                      </div>
-                      
-                      <div className="h-6 w-px bg-white/10 mx-1" />
+                      {isPaused ? <Play size={32} className="md:w-10 md:h-10" fill="currentColor" /> : <Pause size={32} className="md:w-10 md:h-10" fill="currentColor" />}
+                    </button>
 
-                      <button
-                        onClick={isPaused ? resumeRecording : pauseRecording}
-                        className="p-1.5 text-white/80 hover:text-white transition-colors"
-                      >
-                        {isPaused ? <Play size={20} fill="currentColor" /> : <Pause size={20} fill="currentColor" />}
-                      </button>
+                    <button
+                      onClick={finishRecording}
+                      className="w-20 h-20 md:w-24 md:h-24 flex items-center justify-center bg-amber-500 hover:bg-amber-400 text-black rounded-full transition-all shadow-xl shadow-amber-500/20"
+                    >
+                      <Square size={32} className="md:w-10 md:h-10" fill="currentColor" />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-                      <button
-                        onClick={cancelRecording}
-                        className="p-1.5 text-white/30 hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-
-                      <button
-                        onClick={finishRecording}
-                        className="ml-auto bg-amber-500 hover:bg-amber-400 text-black px-6 py-2.5 rounded-2xl text-[10px] font-black transition-all shadow-lg shadow-amber-500/20 uppercase tracking-widest"
-                      >
-                        Terminar
-                      </button>
-                    </motion.div>
-                  ) : (
+          {!isRecording && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-lg z-50 md:relative md:bottom-auto md:left-auto md:translate-x-0 md:w-full md:max-w-none md:mb-10">
+              <div className="bg-gray-900/95 backdrop-blur-xl p-3 rounded-[2.5rem] shadow-2xl flex items-center justify-between gap-3 border border-white/10">
+                <div className="flex-1">
+                  <AnimatePresence mode="wait">
                     <motion.div 
                       key="actions-ui"
                       initial={{ opacity: 0 }}
@@ -1070,11 +1105,11 @@ Si no detectas una referencia clara, usa una descripción breve.`;
                         <Download size={24} />
                       </button>
                     </motion.div>
-                  )}
-                </AnimatePresence>
+                  </AnimatePresence>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <AnimatePresence mode="wait">
             {activeTab === 'notes' ? (
@@ -1085,7 +1120,7 @@ Si no detectas una referencia clara, usa una descripción breve.`;
                 exit={{ opacity: 0, y: -10 }}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-wrap items-center gap-4">
                     <h2 className="text-3xl font-display font-black text-gray-900 dark:text-white tracking-tight uppercase">Notas de Sabiduría</h2>
                     <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl">
                       <button
@@ -1102,88 +1137,21 @@ Si no detectas una referencia clara, usa una descripción breve.`;
                       </button>
                     </div>
                   </div>
-                  
-                  {filteredNotes.length > 0 && (
-                    <button 
-                      onClick={() => {
-                        setCurrentImmersiveIndex(0);
-                        setIsImmersiveMode(true);
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 bg-black dark:bg-amber-500 text-white dark:text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-800 dark:hover:bg-amber-600 transition-colors shadow-lg shadow-black/5 dark:shadow-none"
+                  <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl ml-auto sm:ml-0 self-end sm:self-auto shrink-0">
+                    <button
+                      onClick={() => setViewMode('list')}
+                      className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400'}`}
                     >
-                      <Maximize2 size={12} />
-                      Lectura Inmersiva
+                      <List size={16} />
                     </button>
-                  )}
-                </div>
-
-                {isImmersiveMode && filteredNotes[currentImmersiveIndex] && (
-                  <AnimatePresence>
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="fixed inset-0 z-50 bg-white dark:bg-gray-950 flex flex-col items-center justify-center p-8 overflow-y-auto"
+                    <button
+                      onClick={() => setViewMode('grid')}
+                      className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400'}`}
                     >
-                      <div className="max-w-3xl w-full">
-                        <div className="flex justify-between items-center mb-12">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-amber-100 dark:bg-amber-500/10 rounded-full flex items-center justify-center text-amber-600 dark:text-amber-500">
-                              <BookOpen size={20} />
-                            </div>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                              {currentImmersiveIndex + 1} de {filteredNotes.length}
-                            </span>
-                          </div>
-                          <button 
-                            onClick={() => setIsImmersiveMode(false)}
-                            className="w-10 h-10 bg-gray-100 dark:bg-white/5 rounded-full flex items-center justify-center hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
-                          >
-                            <X size={20} className="text-gray-600 dark:text-gray-400" />
-                          </button>
-                        </div>
-
-                        <motion.div
-                          key={filteredNotes[currentImmersiveIndex].id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="prose prose-stone dark:prose-invert prose-lg max-w-none"
-                        >
-                          {filteredNotes[currentImmersiveIndex].reference && (
-                            <span className="inline-block px-3 py-1 bg-amber-100 dark:bg-amber-500/10 text-amber-800 dark:text-amber-500 rounded-lg text-[10px] font-black uppercase tracking-widest mb-6 border border-amber-200 dark:border-amber-500/20">
-                              {filteredNotes[currentImmersiveIndex].reference}
-                            </span>
-                          )}
-                          <div className="text-2xl leading-relaxed text-gray-800 dark:text-gray-200 font-serif">
-                            <ReactMarkdown>{filteredNotes[currentImmersiveIndex].content}</ReactMarkdown>
-                          </div>
-                        </motion.div>
-
-                        <div className="flex justify-between items-center mt-16 pt-8 border-t border-gray-100 dark:border-white/5">
-                          <div className="text-[10px] font-mono text-gray-400 dark:text-gray-600 uppercase tracking-widest">
-                            Usa las flechas para navegar · Esc para salir
-                          </div>
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={() => setCurrentImmersiveIndex(prev => Math.max(0, prev - 1))}
-                              disabled={currentImmersiveIndex === 0}
-                              className="p-3 rounded-xl bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 disabled:opacity-30"
-                            >
-                              <ChevronLeft size={20} />
-                            </button>
-                            <button 
-                              onClick={() => setCurrentImmersiveIndex(prev => Math.min(filteredNotes.length - 1, prev + 1))}
-                              disabled={currentImmersiveIndex === filteredNotes.length - 1}
-                              className="p-3 rounded-xl bg-gray-900 dark:bg-amber-500 text-white dark:text-black disabled:opacity-30 shadow-lg dark:shadow-none"
-                            >
-                              <ChevronRight size={20} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  </AnimatePresence>
-                )}
+                      <LayoutGrid size={16} />
+                    </button>
+                  </div>
+                </div>
 
                 {pendingAudio && !isProcessingAudio && (
                   <motion.div 
@@ -1300,9 +1268,9 @@ Si no detectas una referencia clara, usa una descripción breve.`;
                   </motion.div>
                 )}
 
-                <div className="space-y-6">
+                <div className={viewMode === 'grid' ? "columns-1 md:columns-2 gap-6 space-y-6 md:space-y-0" : "space-y-6"}>
                   {filteredNotes.length === 0 && !isEditingNote && (
-                    <div className="text-center py-12 px-6 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-2xl bg-gray-50 dark:bg-white/5">
+                    <div className={`text-center py-12 px-6 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-2xl bg-gray-50 dark:bg-white/5 break-inside-avoid ${viewMode === 'grid' ? 'mb-6' : ''}`}>
                       <p className="text-gray-500 dark:text-gray-400 mb-2">
                         {showFavoritesOnly ? "No hay notas favoritas aún." : "Aún no has escrito notas para este libro."}
                       </p>
@@ -1322,7 +1290,7 @@ Si no detectas una referencia clara, usa una descripción breve.`;
                       key={note.id}
                       id={`note-${note.id}`}
                       layout
-                      className={`bg-white dark:bg-gray-900 p-6 rounded-2xl border transition-all group relative ${isLinkingNoteId === note.id ? 'border-amber-500 ring-2 ring-amber-500/10 dark:ring-amber-500/20' : 'border-gray-100 dark:border-white/5 shadow-sm dark:shadow-none'}`}
+                      className={`bg-white dark:bg-gray-900 p-6 rounded-2xl border transition-all group relative break-inside-avoid ${viewMode === 'grid' ? 'mb-6 md:mb-6 mt-0 inline-block w-full' : ''} ${isLinkingNoteId === note.id ? 'border-amber-500 ring-2 ring-amber-500/10 dark:ring-amber-500/20' : 'border-gray-100 dark:border-white/5 shadow-sm dark:shadow-none'}`}
                     >
                       <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center gap-3">
@@ -1527,13 +1495,62 @@ Si no detectas una referencia clara, usa una descripción breve.`;
                   </div>
                 )}
               </motion.div>
+            ) : activeTab === 'insights' ? (
+              <motion.div
+                key="insights"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6"
+              >
+                <div className="flex flex-col md:flex-row justify-between items-center bg-gray-900 p-8 rounded-[2.5rem] border border-white/5 gap-6 mb-10 shadow-2xl overflow-hidden relative group">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl group-hover:bg-amber-500/20 transition-all duration-700" />
+                  <div className="text-center md:text-left relative z-10">
+                    <h3 className="text-2xl font-display font-black text-white mb-2 uppercase tracking-tight">Conexiones Ocultas</h3>
+                    <p className="text-gray-400 font-serif italic max-w-lg">
+                      La IA analizará tus notas para encontrar patrones profundos, relaciones ocultas y revelaciones sorprendentes sobre el libro.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleGenerateInsights}
+                    disabled={isGeneratingInsights}
+                    className="relative z-10 w-full md:w-auto px-8 py-4 bg-amber-500 hover:bg-amber-400 disabled:bg-white/10 disabled:text-white/30 text-black rounded-2xl text-xs font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-amber-500/20 disabled:shadow-none flex items-center justify-center space-x-3 active:scale-95"
+                  >
+                    {isGeneratingInsights ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <Zap size={18} />
+                    )}
+                    <span>{isGeneratingInsights ? 'Analizando...' : 'Revelar Conexiones'}</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {insights.map((insight) => (
+                    <motion.div
+                      key={insight.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-white dark:bg-gray-900 p-8 rounded-[2.5rem] border border-gray-100 dark:border-white/5 shadow-xl shadow-gray-200/50 dark:shadow-none flex flex-col items-start gap-4 relative overflow-hidden"
+                    >
+                      <div className={`p-4 rounded-3xl mb-2 text-white shadow-lg ${insight.type === 'epiphany' ? 'bg-amber-500 shadow-amber-500/20' : insight.type === 'application' ? 'bg-green-500 shadow-green-500/20' : 'bg-blue-500 shadow-blue-500/20'}`}>
+                        {insight.type === 'epiphany' ? <Sparkles size={24} /> : insight.type === 'application' ? <Link2 size={24} /> : <Zap size={24} />}
+                      </div>
+                      <h4 className="text-xl font-display font-black text-gray-900 dark:text-white">{insight.title}</h4>
+                      <p className="text-gray-600 dark:text-gray-400 font-serif leading-relaxed text-sm md:text-base">
+                         {insight.description}
+                      </p>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
             ) : (
               <motion.div
                 key="chat"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="flex flex-col h-[650px] bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 rounded-[2.5rem] overflow-hidden shadow-2xl dark:shadow-none"
+                className="flex flex-col h-[500px] md:h-[650px] bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 rounded-[2.5rem] overflow-hidden shadow-2xl dark:shadow-none"
               >
                 <div className="p-6 border-b border-gray-50 dark:border-white/5 bg-white dark:bg-gray-900 flex items-center justify-between">
                   <div className="flex items-center gap-3">
