@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "Book": {
+      "title": "Book",
+      "description": "A book added by the user to their library",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "summary": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["Leyendo", "Terminado", "Por leer", "Abandonado"] },
+        "startDate": { "type": "number" },
+        "endDate": { "type": "number" },
+        "addedAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "title", "author", "status", "addedAt"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "A note taken on a book",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bookId": { "type": "string" },
+        "content": { "type": "string" },
+        "reference": { "type": "string" },
+        "isFavorite": { "type": "boolean" },
+        "relatedNoteIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "audioData": { "type": "string" },
+        "audioStartTime": { "type": "number" },
+        "audioEndTime": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "bookId", "content", "createdAt", "updatedAt"]
+    },
+    "GlossaryTerm": {
+      "title": "GlossaryTerm",
+      "description": "A glossary term associated with a book",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bookId": { "type": "string" },
+        "term": { "type": "string" },
+        "definition": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "bookId", "term", "definition", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/books/{bookId}": {
+      "schema": { "$ref": "#/entities/Book" },
+      "description": "User's book library"
+    },
+    "/notes/{noteId}": {
+      "schema": { "$ref": "#/entities/Note" },
+      "description": "Notes for all books"
+    },
+    "/terms/{termId}": {
+      "schema": { "$ref": "#/entities/GlossaryTerm" },
+      "description": "Glossary terms for all books"
+    }
+  }
+}

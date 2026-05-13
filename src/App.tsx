@@ -1,71 +1,184 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { Book, Note, GlossaryTerm } from './types';
+import { Book, Note, GlossaryTerm, BookRecommendation } from './types';
 import { BookCard } from './components/BookCard';
 import { BookDetail } from './components/BookDetail';
 import { AddBookModal } from './components/AddBookModal';
+import { RecommendationModal } from './components/RecommendationModal';
+import { CategoryBrowser } from './components/CategoryBrowser';
+import { GoogleGenAI } from '@google/genai';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookMarked, Plus, Search, Clock, Calendar, User, Type, ArrowUp, ArrowDown } from 'lucide-react';
+import { BookMarked, Plus, Search, Clock, Calendar, User, Type, ArrowUp, ArrowDown, BookOpen, Loader2, ExternalLink, Zap, ArrowRight, LogOut } from 'lucide-react';
+import { useBiblionotasData } from './lib/useBiblionotasData';
+import { auth } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { LoginScreen } from './components/LoginScreen';
+
+const OPEN_LIBRARY_CATEGORIES = [
+  { name: 'Tendencias Globales', query: 'fiction' },
+  { name: 'Clásicos Imperdibles', query: 'classic' },
+  { name: 'Misterio y Suspenso', query: 'mystery' },
+  { name: 'Ciencia Ficción y Fantasía', query: 'fantasy' },
+  { name: 'Desarrollo Personal', query: 'self_help' },
+  { name: 'Romance', query: 'romance' },
+  { name: 'Historia y Eventos', query: 'history' },
+  { name: 'Biografía y Memorias', query: 'biography' },
+  { name: 'Emprendimiento y Negocios', query: 'business' },
+  { name: 'Poesía', query: 'poetry' }
+];
 
 type SortOption = 'title' | 'author' | 'addedAt' | 'lastUpdated';
 
 export default function App() {
-  const [books, setBooks] = useLocalStorage<Book[]>('biblionotas-books', []);
-  const [notes, setNotes] = useLocalStorage<Note[]>('biblionotas-notes', []);
-  const [terms, setTerms] = useLocalStorage<GlossaryTerm[]>('biblionotas-terms', []);
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (usr) => {
+      setUser(usr);
+      setAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  if (authLoading) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#f9f7f5] dark:bg-gray-950"><Loader2 className="animate-spin text-amber-500" size={48} /></div>;
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  return <BiblionotasApp />;
+}
+
+function BiblionotasApp() {
+  const { books, notes, terms, loading, addOrUpdateBook, deleteBook, addOrUpdateNote, deleteNote, addOrUpdateTerm, deleteTerm } = useBiblionotasData();
   const [isDarkMode, setIsDarkMode] = useLocalStorage<boolean>('biblionotas-dark-mode', false);
+  const [recommendations, setRecommendations] = useLocalStorage<BookRecommendation[]>('biblionotas-recommendations', []);
+  const [isGeneratingRecommendations, setIsGeneratingRecommendations] = useState(false);
+  const [selectedRecommendation, setSelectedRecommendation] = useState<BookRecommendation | null>(null);
+  const [recommendationGenre, setRecommendationGenre] = useState<string>('Todos');
   
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
+  const [browsingCategory, setBrowsingCategory] = useState<{name: string, query: string} | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
   const [sortBy, setSortBy] = useState<SortOption>('lastUpdated');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
+  const filteredRecommendations = useMemo(() => {
+    if (recommendationGenre === 'Todos') return recommendations;
+    return recommendations.filter(r => (r.genre || 'General') === recommendationGenre);
+  }, [recommendations, recommendationGenre]);
+
+  const genres = useMemo(() => {
+    const list = Array.from(new Set(recommendations.map(r => r.genre || 'General').filter(Boolean))) as string[];
+    return ['Todos', ...list];
+  }, [recommendations]);
+
   const handleAddBook = (newBookData: Omit<Book, 'id' | 'addedAt'>) => {
     const newBook: Book = {
       ...newBookData,
       id: crypto.randomUUID(),
+      userId: auth.currentUser!.uid,
       addedAt: Date.now(),
     };
-    setBooks(prev => [newBook, ...prev]);
+    addOrUpdateBook(newBook);
+  };
+
+  const handleGenerateRecommendations = async () => {
+    try {
+      setIsGeneratingRecommendations(true);
+      setRecommendations([]); // Clear old state
+      
+      const newRecommendations: BookRecommendation[] = [];
+
+      for (const cat of OPEN_LIBRARY_CATEGORIES) {
+        try {
+          const response = await fetch(`https://openlibrary.org/subjects/${cat.query}.json?limit=10`);
+          const data = await response.json();
+          
+          if (data.works) {
+            for (const item of data.works) {
+              // Avoid duplicates
+              if (!newRecommendations.find(r => r.title === item.title)) {
+                const coverUrl = item.cover_id 
+                  ? `https://covers.openlibrary.org/b/id/${item.cover_id}-M.jpg` 
+                  : (item.cover_edition_key ? `https://covers.openlibrary.org/b/olid/${item.cover_edition_key}-M.jpg` : '');
+
+                newRecommendations.push({
+                  id: crypto.randomUUID(),
+                  bookId: item.key,
+                  title: item.title || 'Desconocido',
+                  author: item.authors ? item.authors.map((a: any) => a.name).join(', ') : 'Autor Anónimo',
+                  reason: `Destacado en ${cat.name}`,
+                  pdfUrl: `https://openlibrary.org${item.key}`,
+                  description: 'Explora este título en Open Library.',
+                  coverUrl: coverUrl || 'https://via.placeholder.com/128x192.png?text=Sin+Portada',
+                  genre: cat.name,
+                  createdAt: Date.now()
+                });
+              }
+            }
+          }
+        } catch (catError) {
+          console.error(`Error fetching category ${cat.name}:`, catError);
+        }
+      }
+      
+      setRecommendations(newRecommendations);
+    } catch (error) {
+      console.error('Error generating recommendations:', error);
+    } finally {
+      setIsGeneratingRecommendations(false);
+    }
+  };
+
+  // Trigger automatically on load if empty
+  React.useEffect(() => {
+    // Fetch if we don't have recommendations and aren't already generating
+    if (recommendations.length === 0 && !isGeneratingRecommendations) {
+      handleGenerateRecommendations();
+    }
+  }, []); // Only run on mount
+
+  const handleAddRecommendation = (rec: BookRecommendation) => {
+    handleAddBook({
+      title: rec.title,
+      author: rec.author,
+      summary: rec.description,
+      coverUrl: rec.coverUrl,
+      status: 'Por leer',
+      userId: auth.currentUser!.uid
+    });
+    setSelectedRecommendation(null);
   };
 
   const handleUpdateBook = (updatedBook: Book) => {
-    setBooks(prev => prev.map(book => book.id === updatedBook.id ? updatedBook : book));
+    addOrUpdateBook(updatedBook);
   };
 
   const handleDeleteBook = (id: string) => {
-    setBooks(prev => prev.filter(book => book.id !== id));
-    // Also cleanup notes and terms
-    setNotes(prev => prev.filter(note => note.bookId !== id));
-    setTerms(prev => prev.filter(term => term.bookId !== id));
+    deleteBook(id);
   };
 
   const handleSaveNote = (bookId: string, content: string, reference?: string, noteId?: string, relatedNoteIds?: string[], audioData?: string, audioStartTime?: number, audioEndTime?: number) => {
     if (noteId) {
-      setNotes(prev => prev.map(note => {
-        if (note.id === noteId) {
-          const updatedNote: Note = { ...note, content, reference, updatedAt: Date.now() };
-          if (relatedNoteIds !== undefined) {
-            updatedNote.relatedNoteIds = relatedNoteIds;
-          }
-          if (audioData !== undefined) {
-            updatedNote.audioData = audioData;
-          }
-          if (audioStartTime !== undefined) {
-            updatedNote.audioStartTime = audioStartTime;
-          }
-          if (audioEndTime !== undefined) {
-            updatedNote.audioEndTime = audioEndTime;
-          }
-          return updatedNote;
-        }
-        return note;
-      }));
+      const existing = notes.find(n => n.id === noteId);
+      if (existing) {
+        const updatedNote: Note = { ...existing, content, reference, updatedAt: Date.now() };
+        if (relatedNoteIds !== undefined) updatedNote.relatedNoteIds = relatedNoteIds;
+        if (audioData !== undefined) updatedNote.audioData = audioData;
+        if (audioStartTime !== undefined) updatedNote.audioStartTime = audioStartTime;
+        if (audioEndTime !== undefined) updatedNote.audioEndTime = audioEndTime;
+        addOrUpdateNote(updatedNote);
+      }
     } else {
       const newNote: Note = {
         id: crypto.randomUUID(),
+        userId: auth.currentUser!.uid,
         bookId,
         content,
         reference,
@@ -76,26 +189,27 @@ export default function App() {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      setNotes(prev => [...prev, newNote]);
+      addOrUpdateNote(newNote);
     }
   };
 
   const handleDeleteNote = (id: string) => {
-    setNotes(prev => prev.filter(note => note.id !== id));
+    deleteNote(id);
   };
 
   const handleToggleNoteFavorite = (id: string) => {
-    setNotes(prev => prev.map(note => 
-      note.id === id ? { ...note, isFavorite: !note.isFavorite } : note
-    ));
+    const existing = notes.find(n => n.id === id);
+    if (existing) {
+      addOrUpdateNote({ ...existing, isFavorite: !existing.isFavorite });
+    }
   };
 
   const handleAddTerm = (term: GlossaryTerm) => {
-    setTerms(prev => [term, ...prev]);
+    addOrUpdateTerm(term);
   };
 
   const handleDeleteTerm = (id: string) => {
-    setTerms(prev => prev.filter(t => t.id !== id));
+    deleteTerm(id);
   };
 
   const selectedBook = selectedBookId ? books.find(b => b.id === selectedBookId) : null;
@@ -145,6 +259,10 @@ export default function App() {
     }
   }, [isDarkMode]);
 
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#f9f7f5] dark:bg-gray-950"><Loader2 className="animate-spin text-amber-500" size={48} /></div>;
+  }
+
   return (
     <div className="min-h-screen font-sans text-gray-900 bg-[#f9f7f5] dark:bg-gray-950 dark:text-gray-100 transition-colors duration-500">
       <header className="sticky top-0 z-40 bg-white/70 backdrop-blur-2xl border-b border-gray-100/30 dark:bg-gray-950/70 dark:border-white/5">
@@ -159,11 +277,18 @@ export default function App() {
             <h1 className="text-3xl font-display font-black tracking-tighter uppercase dark:text-white leading-none">BIBLIO<span className="text-amber-500 dark:text-white/40">NOTAS</span></h1>
           </div>
           
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-3 bg-gray-100 dark:bg-gray-800 rounded-2xl text-gray-600 dark:text-amber-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
-            >
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => auth.signOut()}
+                className="p-3 bg-gray-100 dark:bg-gray-800 rounded-2xl text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 transition-all group"
+                title="Cerrar sesión"
+              >
+                <LogOut size={18} className="group-hover:-translate-x-0.5 transition-transform" />
+              </button>
+              <button
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="p-3 bg-gray-100 dark:bg-gray-800 rounded-2xl text-gray-600 dark:text-amber-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
+              >
               {isDarkMode ? (
                 <motion.div
                   initial={{ rotate: -90, opacity: 0 }}
@@ -196,7 +321,14 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-10 md:py-16">
         <AnimatePresence mode="wait">
-          {selectedBook ? (
+          {browsingCategory ? (
+            <CategoryBrowser
+              key="browser"
+              category={browsingCategory}
+              onBack={() => setBrowsingCategory(null)}
+              onSelectBook={setSelectedRecommendation}
+            />
+          ) : selectedBook ? (
             <BookDetail
               key="detail"
               book={selectedBook}
@@ -297,9 +429,77 @@ export default function App() {
                   ))}
                 </div>
               )}
+
+              <div className="mt-20">
+                <div className="mb-10">
+                  <h3 className="text-2xl font-display font-black text-gray-900 dark:text-white mb-2 uppercase tracking-tight">Clasificaciones Populares</h3>
+                  <p className="text-gray-500 dark:text-gray-400 font-serif italic max-w-lg">
+                    {isGeneratingRecommendations ? 'Cargando recomendaciones...' : 'Descubre los títulos más populares clasificados para ti.'}
+                  </p>
+                </div>
+
+                {isGeneratingRecommendations ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-4">
+                    <Loader2 size={32} className="animate-spin text-amber-500" />
+                    <p className="text-gray-400 font-serif italic">Buscando las mejores lecturas para ti...</p>
+                  </div>
+                ) : recommendations.length > 0 ? (
+                  <div className="space-y-12">
+                  {genres.filter(g => g !== 'Todos').map(genre => (
+                    <div key={genre} className="space-y-4">
+                      <h4 className="text-xl font-display font-black text-gray-900 dark:text-white px-4">{genre}</h4>
+                      <div className="flex gap-4 overflow-x-auto pb-6 px-4 no-scrollbar">
+                        {recommendations.filter(r => (r.genre || 'General') === genre).map(rec => (
+                          <motion.button
+                            key={rec.id}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => setSelectedRecommendation(rec)}
+                            className="aspect-[2/3] w-32 md:w-40 flex-shrink-0 rounded-2xl overflow-hidden shadow-xl shadow-gray-200/50 dark:shadow-none border border-gray-100 dark:border-white/10 relative group bg-gray-100 dark:bg-gray-800"
+                          >
+                            {rec.coverUrl ? (
+                              <img src={rec.coverUrl} alt={rec.title} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center text-center p-4">
+                                <BookMarked size={32} className="text-gray-300 dark:text-gray-600 mb-2" />
+                              </div>
+                            )}
+                          </motion.button>
+                        ))}
+                        {(() => {
+                          const categoryObj = OPEN_LIBRARY_CATEGORIES.find(c => c.name === genre);
+                          if (!categoryObj) return null;
+                          return (
+                            <button
+                              onClick={() => setBrowsingCategory(categoryObj)}
+                              className="aspect-[2/3] w-32 md:w-40 flex-shrink-0 rounded-2xl overflow-hidden shadow-xl shadow-gray-200/50 dark:shadow-none border border-gray-100 dark:border-white/10 relative group bg-gray-100 dark:bg-gray-800 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors no-underline"
+                            >
+                               <div className="rounded-full bg-gray-200 dark:bg-gray-700 p-3 mb-3 group-hover:scale-110 transition-transform flex items-center justify-center shadow-sm">
+                                  <ArrowRight size={24} className="text-gray-600 dark:text-gray-300" />
+                               </div>
+                               <span className="font-semibold text-gray-700 dark:text-gray-300 block text-sm">Ver más</span>
+                            </button>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-400">
+                    No se pudieron cargar recomendaciones, intenta recargar la página.
+                  </div>
+                )}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
+
+        <RecommendationModal 
+          recommendation={selectedRecommendation}
+          onClose={() => setSelectedRecommendation(null)}
+          onAdd={handleAddRecommendation}
+        />
       </main>
 
       <AddBookModal 

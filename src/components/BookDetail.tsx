@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { Glossary } from './Glossary';
 import { ConfirmModal } from './ConfirmModal';
 import { GoogleGenAI } from '@google/genai';
-import { Book, Note, GlossaryTerm, Flashcard, ChatMessage, BookStatus, Insight } from '../types';
+import { Book, Note, GlossaryTerm, Flashcard, ChatMessage, BookStatus, Insight, BookRecommendation } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
 interface Props {
@@ -102,6 +102,10 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
   // Insights state
   const [insights, setInsights] = useLocalStorage<Insight[]>(`insights-${book.id}`, []);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+  
+  // Recommendations state
+  const [recommendations, setRecommendations] = useLocalStorage<BookRecommendation[]>(`recommendations-${book.id}`, []);
+  const [isGeneratingRecommendations, setIsGeneratingRecommendations] = useState(false);
   
   // Chat state
   const [chatMessages, setChatMessages] = useLocalStorage<ChatMessage[]>(`chat-history-${book.id}`, []);
@@ -538,6 +542,49 @@ ${notes.map(n => n.content).join('\n')}`;
     }
   };
 
+  const handleGenerateRecommendations = async () => {
+    try {
+      setIsGeneratingRecommendations(true);
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const prompt = `Basándote en el libro "${book.title}" de ${book.author}, sugiere 3 libros similares que sean clásicos de dominio público u obras de acceso libre/gratuito. Para cada uno, proporciona el título, autor, una breve razón de la recomendación, y un enlace directo a una fuente legítima gratuita (como Project Gutenberg o similar) si es posible.
+Devuelve estrictamente un JSON con este formato exacto:
+{
+  "recommendations": [
+    {
+      "title": "Título del libro",
+      "author": "Autor",
+      "reason": "Por qué es una buena recomendación",
+      "pdfUrl": "URL opcional al PDF gratuito o fuente"
+    }
+  ]
+}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: { responseMimeType: 'application/json' }
+      });
+      
+      const result = JSON.parse(response.text || '{}');
+      if (result.recommendations) {
+        const newRecommendations: BookRecommendation[] = result.recommendations.map((c: any) => ({
+          id: Math.random().toString(36).substr(2, 9),
+          bookId: book.id,
+          title: c.title,
+          author: c.author,
+          reason: c.reason,
+          pdfUrl: c.pdfUrl,
+          createdAt: Date.now()
+        }));
+        setRecommendations(newRecommendations);
+      }
+    } catch (error) {
+      console.error('Error generating recommendations:', error);
+    } finally {
+      setIsGeneratingRecommendations(false);
+    }
+  };
+
   const handleChatSendMessage = async () => {
     if (!currentInput.trim() || isAiResponding) return;
 
@@ -962,6 +1009,18 @@ ${notes.map(n => n.content).join('\n')}`;
                 <span>Conexiones</span>
               </div>
               {activeTab === 'insights' && (
+                <motion.div layoutId="activeTabIndicator" className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500 rounded-full" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('recommendations')}
+              className={`pb-4 text-xs md:text-sm uppercase tracking-[0.2em] font-black transition-all relative whitespace-nowrap px-2 ${activeTab === 'recommendations' ? 'text-gray-900 dark:text-white' : 'text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400'}`}
+            >
+              <div className="flex items-center space-x-2">
+                <BookOpen size={16} />
+                <span>Recomendaciones</span>
+              </div>
+              {activeTab === 'recommendations' && (
                 <motion.div layoutId="activeTabIndicator" className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500 rounded-full" />
               )}
             </button>
@@ -1540,6 +1599,59 @@ ${notes.map(n => n.content).join('\n')}`;
                       <p className="text-gray-600 dark:text-gray-400 font-serif leading-relaxed text-sm md:text-base">
                          {insight.description}
                       </p>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            ) : activeTab === 'recommendations' ? (
+              <motion.div
+                key="recommendations"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6"
+              >
+                <div className="flex flex-col md:flex-row justify-between items-center bg-gray-900 p-8 rounded-[2.5rem] border border-white/5 gap-6 mb-10 shadow-2xl overflow-hidden relative group">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl group-hover:bg-amber-500/20 transition-all duration-700" />
+                  <div className="text-center md:text-left relative z-10">
+                    <h3 className="text-2xl font-display font-black text-white mb-2 uppercase tracking-tight">Recomendaciones</h3>
+                    <p className="text-gray-400 font-serif italic max-w-lg">
+                      Basado en tu lectura actual, aquí tienes otras lecturas que podrían expandir tu horizonte (y algunas son gratuitas).
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleGenerateRecommendations}
+                    disabled={isGeneratingRecommendations}
+                    className="relative z-10 w-full md:w-auto px-8 py-4 bg-amber-500 hover:bg-amber-400 disabled:bg-white/10 disabled:text-white/30 text-black rounded-2xl text-xs font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-amber-500/20 disabled:shadow-none flex items-center justify-center space-x-3 active:scale-95"
+                  >
+                    {isGeneratingRecommendations ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <BookOpen size={18} />
+                    )}
+                    <span>{isGeneratingRecommendations ? 'Generando...' : 'Obtener Recomendaciones'}</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {recommendations.map((rec) => (
+                    <motion.div
+                      key={rec.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-white dark:bg-gray-900 p-8 rounded-[2.5rem] border border-gray-100 dark:border-white/5 shadow-xl shadow-gray-200/50 dark:shadow-none flex flex-col items-start gap-4 relative overflow-hidden"
+                    >
+                      <h4 className="text-xl font-display font-black text-gray-900 dark:text-white">{rec.title}</h4>
+                      <p className="text-gray-500 dark:text-gray-500 font-black uppercase text-[10px] tracking-widest">{rec.author}</p>
+                      <p className="text-gray-600 dark:text-gray-400 font-serif leading-relaxed text-sm md:text-base">
+                         {rec.reason}
+                      </p>
+                      {rec.pdfUrl && (
+                        <a href={rec.pdfUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 mt-4 text-amber-600 dark:text-amber-500 font-bold text-xs uppercase tracking-widest hover:underline">
+                          <ExternalLink size={14} />
+                          Leer PDF / Fuente
+                        </a>
+                      )}
                     </motion.div>
                   ))}
                 </div>
