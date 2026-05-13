@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onAddBook: (book: Omit<Book, 'id' | 'addedAt'>) => void;
+  onAddBook: (book: Omit<Book, 'id' | 'addedAt' | 'userId'>) => void;
 }
 
 interface ExternalBook {

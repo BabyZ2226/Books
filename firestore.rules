@@ -9,7 +9,7 @@ service cloud.firestore {
 
     // Phase 3: Primitive Definition
     function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$'); 
     }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
@@ -22,49 +22,27 @@ service cloud.firestore {
 
     // Validators
     function isValidBook(data) {
-      return data.keys().size() >= 6 && data.keys().size() <= 10
-        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+      return data.id is string
         && data.userId == request.auth.uid
-        && data.title is string && data.title.size() > 0 && data.title.size() <= 500
-        && data.author is string && data.author.size() > 0 && data.author.size() <= 200
-        && data.status is string && data.status in ["Leyendo", "Terminado", "Por leer", "Abandonado"]
-        && data.addedAt is number
-        && ( !('summary' in data) || (data.summary is string && data.summary.size() <= 5000) )
-        && ( !('coverUrl' in data) || (data.coverUrl is string && data.coverUrl.size() <= 1000) )
-        && ( !('startDate' in data) || data.startDate is number )
-        && ( !('endDate' in data) || data.endDate is number );
+        && data.title is string
+        && data.author is string;
     }
 
     function isValidNote(data) {
-      return data.keys().size() >= 6 && data.keys().size() <= 12
-        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+      return data.id is string
         && data.userId == request.auth.uid
-        && data.bookId is string && data.bookId.size() > 0 && data.bookId.size() <= 128
-        && data.content is string && data.content.size() > 0 && data.content.size() <= 20000
-        && data.createdAt is number
-        && data.updatedAt is number
-        && ( !('reference' in data) || (data.reference is string && data.reference.size() <= 1000) )
-        && ( !('isFavorite' in data) || data.isFavorite is bool )
-        && ( !('relatedNoteIds' in data) || (data.relatedNoteIds is list && data.relatedNoteIds.size() <= 100) )
-        && ( !('audioData' in data) || (data.audioData is string && data.audioData.size() <= 1048576) )
-        && ( !('audioStartTime' in data) || data.audioStartTime is number )
-        && ( !('audioEndTime' in data) || data.audioEndTime is number );
+        && data.bookId is string;
     }
 
     function isValidTerm(data) {
-      return data.keys().size() >= 6 && data.keys().size() <= 6
-        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+      return data.id is string
         && data.userId == request.auth.uid
-        && data.bookId is string && data.bookId.size() > 0 && data.bookId.size() <= 128
-        && data.term is string && data.term.size() > 0 && data.term.size() <= 200
-        && data.definition is string && data.definition.size() > 0 && data.definition.size() <= 5000
-        && data.createdAt is number;
+        && data.bookId is string;
     }
 
     // Books Collection
     match /books/{bookId} {
-      allow get: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow list: if request.auth != null;
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
       
       allow create: if isSignedIn()
         && isValidId(bookId)
@@ -76,16 +54,14 @@ service cloud.firestore {
         && existing().userId == request.auth.uid
         && isValidBook(incoming())
         && incoming().userId == existing().userId
-        && incoming().id == existing().id
-        && incoming().addedAt == existing().addedAt;
+        && incoming().id == existing().id;
         
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
     // Notes Collection
     match /notes/{noteId} {
-      allow get: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow list: if request.auth != null;
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
       
       allow create: if isSignedIn()
         && isValidId(noteId)
@@ -98,16 +74,14 @@ service cloud.firestore {
         && isValidNote(incoming())
         && incoming().userId == existing().userId
         && incoming().id == existing().id
-        && incoming().bookId == existing().bookId
-        && incoming().createdAt == existing().createdAt;
+        && incoming().bookId == existing().bookId;
         
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
     // Terms Collection
     match /terms/{termId} {
-      allow get: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow list: if request.auth != null;
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
       
       allow create: if isSignedIn()
         && isValidId(termId)
@@ -120,8 +94,7 @@ service cloud.firestore {
         && isValidTerm(incoming())
         && incoming().userId == existing().userId
         && incoming().id == existing().id
-        && incoming().bookId == existing().bookId
-        && incoming().createdAt == existing().createdAt;
+        && incoming().bookId == existing().bookId;
         
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }

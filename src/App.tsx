@@ -78,7 +78,7 @@ function BiblionotasApp() {
     return ['Todos', ...list];
   }, [recommendations]);
 
-  const handleAddBook = (newBookData: Omit<Book, 'id' | 'addedAt'>) => {
+  const handleAddBook = (newBookData: Omit<Book, 'id' | 'addedAt' | 'userId'>) => {
     const newBook: Book = {
       ...newBookData,
       id: crypto.randomUUID(),
@@ -150,8 +150,7 @@ function BiblionotasApp() {
       author: rec.author,
       summary: rec.description,
       coverUrl: rec.coverUrl,
-      status: 'Por leer',
-      userId: auth.currentUser!.uid
+      status: 'Por leer'
     });
     setSelectedRecommendation(null);
   };
@@ -204,8 +203,11 @@ function BiblionotasApp() {
     }
   };
 
-  const handleAddTerm = (term: GlossaryTerm) => {
-    addOrUpdateTerm(term);
+  const handleAddTerm = (termData: Omit<GlossaryTerm, 'userId'>) => {
+    addOrUpdateTerm({
+      ...termData,
+      userId: auth.currentUser!.uid
+    });
   };
 
   const handleDeleteTerm = (id: string) => {

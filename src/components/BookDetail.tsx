@@ -18,7 +18,7 @@ interface Props {
   onSaveNote: (bookId: string, content: string, reference?: string, noteId?: string, relatedNoteIds?: string[], audioData?: string, audioStartTime?: number, audioEndTime?: number) => void;
   onDeleteNote: (noteId: string) => void;
   onToggleNoteFavorite: (noteId: string) => void;
-  onAddTerm: (term: GlossaryTerm) => void;
+  onAddTerm: (term: Omit<GlossaryTerm, 'userId'>) => void;
   onDeleteTerm: (termId: string) => void;
 }
 
@@ -81,7 +81,7 @@ const FlashcardItem = ({ card, onDelete }: { card: Flashcard, onDelete: () => vo
 };
 
 export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteBook, onSaveNote, onDeleteNote, onToggleNoteFavorite, onAddTerm, onDeleteTerm }: Props) {
-  const [activeTab, setActiveTab] = useState<'notes' | 'glossary' | 'flashcards' | 'chat' | 'insights'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'glossary' | 'flashcards' | 'chat' | 'insights' | 'recommendations'>('notes');
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [currentNote, setCurrentNote] = useState('');
   const [currentReference, setCurrentReference] = useState('');
@@ -281,29 +281,29 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
       }, 1000);
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const prompt = `Actúa como un tutor literario de alto nivel. He grabado un audio de hasta 20 minutos sobre el libro "${book.title}" de "${book.author}".
+      const prompt = `Actúa como un tutor literario de alto nivel especializado en adolescentes. He grabado un audio de hasta 20 minutos sobre el libro "${book.title}" de "${book.author}".
         
 Tu tarea:
-1. SEPARA POR PÁGINAS/CAPÍTULOS: Identifica cada sección del audio donde hablo de una página o capítulo diferente.
-2. NOTAS INDEPENDIENTES: Crea una nota detallada para CADA sección identificada. 
-3. TIMESTAMPS (CRÍTICO): Identifica el segundo exacto de inicio y fin (en segundos desde el inicio del audio) de cada sección donde hablo de esa página/capítulo.
-4. GLOSARIO: Extrae términos complejos de todo el audio.
+1. DIVISIÓN POR CAPÍTULOS Y PÁGINAS (CRÍTICO): Identifica CADA sección del audio donde hablo de un capítulo o página específica.
+2. NOTAS INDEPENDIENTES: Crea una nota detallada para CADA una de estas secciones identificadas. Si hablo de 3 capítulos, crea 3 notas.
+3. TIMESTAMPS: Identifica el segundo exacto de inicio y fin (en segundos desde el inicio del audio) para cada una de estas notas.
+4. GLOSARIO PARA ADOLESCENTES: Extrae palabras o términos que puedan ser difíciles o desconocidos para un ADOLESCENTE (12-18 años), basándote en el audio y el contexto literario. Proporciona definiciones sencillas pero precisas.
 
 Devuelve ÚNICAMENTE un JSON con este formato:
 {
   "notes": [
     {
-      "reference": "Página X / Capítulo Y",
-      "content": "Contenido detallado en Markdown",
+      "reference": "Capítulo X / Página Y",
+      "content": "Contenido detallado en Markdown analizando esta sección específica",
       "startTime": 0,
       "endTime": 60
     }
   ],
   "glossaryItems": [
-    { "word": "palabra", "definition": "explicación", "context": "fragmento" }
+    { "word": "palabra", "definition": "explicación clara para un adolescente", "context": "fragmento donde se mencionó" }
   ]
 }
-Si no detectas una referencia clara, usa una descripción breve.`;
+Si no detectas una referencia clara a una página o capítulo, usa una descripción breve como "Análisis General" o "Reflexión Inicial".`;
 
       setProcessingPhase("Detectando referencias y páginas...");
       
@@ -466,7 +466,7 @@ Si no detectas una referencia clara, usa una descripción breve.`;
     try {
       setIsGeneratingCards(true);
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const prompt = `Basándote en estas notas del libro "${book.title}", genera 5 flashcards de estudio para reforzar el aprendizaje. Cada flashcard debe tener una Pregunta corta y una Respuesta clara. Devuelve estrictamente un JSON con formato: {"flashcards": [{"question": "...", "answer": "..."}]}. Notas:\n${notes.map(n => n.content).join('\n')}`;
+      const prompt = `Basándote en estas notas del libro "${book.title}", genera 5 flashcards de estudio para un ADOLESCENTE (12-18 años) para reforzar el aprendizaje. Cada flashcard debe tener una Pregunta corta y una Respuesta clara pero explicada de forma sencilla. Devuelve estrictamente un JSON con formato: {"flashcards": [{"question": "...", "answer": "..."}]}. Notas:\n${notes.map(n => n.content).join('\n')}`;
       
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -500,15 +500,15 @@ Si no detectas una referencia clara, usa una descripción breve.`;
     try {
       setIsGeneratingInsights(true);
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const prompt = `Analiza profundamente las siguientes notas del libro "${book.title}" de ${book.author}.
-Tu objetivo es encontrar 3 conexiones ocultas, patrones profundos, o revelaciones (insights) únicas que crucen diferentes ideas del libro, y que el usuario podría no haber notado. 
-Cada insight debe pertenecer a una de estas categorías: 'connection' (conecta ideas del libro), 'epiphany' (una revelación filosófica o profunda) o 'application' (una aplicación revolucionaria a la vida real).
+      const prompt = `Analiza profundamente las siguientes notas del libro "${book.title}" de ${book.author} pensando en un lector ADOLESCENTE.
+Tu objetivo es encontrar 3 conexiones ocultas, patrones profundos, o revelaciones (insights) únicas explicadas de forma cautivadora para un joven. 
+Cada insight debe pertenecer a una de estas categorías: 'connection' (conecta ideas del libro), 'epiphany' (una revelación filosófica o profunda) o 'application' (una aplicación revolucionaria a la vida real del adolescente).
 Devuelve estrictamente un JSON con este formato exacto:
 {
   "insights": [
     {
       "title": "Título corto y cautivador del insight",
-      "description": "Explicación detallada de la conexión o revelación descubierta.",
+      "description": "Explicación detallada y clara de la conexión o revelación descubierta.",
       "type": "connection" | "epiphany" | "application"
     }
   ]
@@ -605,7 +605,7 @@ Devuelve estrictamente un JSON con este formato exacto:
       const notesContext = notes.length > 0 ? `Notas del usuario: ${notes.map(n => n.content).join(' | ')}` : "";
       const context = `Contexto del libro "${book.title}" (${book.author}). ${summaryContext}. ${notesContext}.`;
       
-      const prompt = `${context}\n\nPregunta del usuario: ${currentInput}\n\nResponde como un tutor literario experto ayudando al usuario a profundizar en su lectura.`;
+      const prompt = `${context}\n\nPregunta del usuario: ${currentInput}\n\nResponde como un tutor literario experto y cercano, especializado en ADOLESCENTES. Usa un lenguaje claro, motivador y evita formalismos excesivos, ayudando al joven a conectar con la historia y profundizar en su lectura de forma amena.`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',

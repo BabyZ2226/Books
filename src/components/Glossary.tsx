@@ -8,7 +8,7 @@ import { ConfirmModal } from './ConfirmModal';
 interface Props {
   bookId: string;
   terms: GlossaryTerm[];
-  onAddTerm: (term: GlossaryTerm) => void;
+  onAddTerm: (term: Omit<GlossaryTerm, 'userId'>) => void;
   onDeleteTerm: (termId: string) => void;
 }
 
@@ -26,9 +26,9 @@ export function Glossary({ bookId, terms, onAddTerm, onDeleteTerm }: Props) {
       setIsCastingDefinition(true);
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const prompt = `Proporciona una definición concisa pero precisa de la palabra o frase "${word.trim()}".${
+      const prompt = `Proporciona una definición clara, sencilla y precisa de la palabra o frase "${word.trim()}", explicada de forma que un ADOLESCENTE (12-18 años) pueda entenderla fácilmente.${
         context.trim() ? ` El contexto donde se encontró es: "${context.trim()}". ` : ' '
-      }Devuelve solo el texto de la definición, sin introducciones ni comillas.`;
+      }Devuelve solo el texto de la definición, evitando tecnicismos innecesarios, sin introducciones ni comillas.`;
       
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -37,7 +37,7 @@ export function Glossary({ bookId, terms, onAddTerm, onDeleteTerm }: Props) {
       
       const definition = response.text || 'Definición no disponible.';
 
-      const newTerm: GlossaryTerm = {
+      const newTerm: Omit<GlossaryTerm, 'userId'> = {
         id: crypto.randomUUID(),
         bookId,
         word: word.trim(),
