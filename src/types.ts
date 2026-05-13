@@ -12,6 +12,9 @@ export interface Book {
   currentPage?: number;
   totalPages?: number;
   rating?: number;
+  genre?: string;
+  tags?: string[];
+  isFavorite?: boolean;
 }
 
 export interface Note {

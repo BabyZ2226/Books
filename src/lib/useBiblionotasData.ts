@@ -100,10 +100,20 @@ export function useBiblionotasData() {
     };
   }, [auth.currentUser]);
 
+  const sanitizeForFirestore = (obj: any) => {
+    const sanitized = { ...obj };
+    Object.keys(sanitized).forEach(key => {
+      if (sanitized[key] === undefined) {
+        delete sanitized[key];
+      }
+    });
+    return sanitized;
+  };
+
   const addOrUpdateBook = async (book: Book) => {
     try {
       if (!book.userId) book.userId = auth.currentUser!.uid;
-      await setDoc(doc(db, 'books', book.id), book);
+      await setDoc(doc(db, 'books', book.id), sanitizeForFirestore(book));
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'books');
     }
@@ -123,7 +133,7 @@ export function useBiblionotasData() {
   const addOrUpdateNote = async (note: Note) => {
     try {
       if (!note.userId) note.userId = auth.currentUser!.uid;
-      await setDoc(doc(db, 'notes', note.id), note);
+      await setDoc(doc(db, 'notes', note.id), sanitizeForFirestore(note));
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'notes');
     }
@@ -140,7 +150,7 @@ export function useBiblionotasData() {
   const addOrUpdateTerm = async (term: GlossaryTerm) => {
     try {
       if (!term.userId) term.userId = auth.currentUser!.uid;
-      await setDoc(doc(db, 'terms', term.id), term);
+      await setDoc(doc(db, 'terms', term.id), sanitizeForFirestore(term));
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'terms');
     }

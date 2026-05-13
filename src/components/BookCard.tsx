@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Book } from '../types';
-import { Image as ImageIcon, Trash2, Book as BookIcon } from 'lucide-react';
+import { Image as ImageIcon, Trash2, Book as BookIcon, Star } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -79,6 +79,18 @@ export function BookCard({ book, onClick, onDelete }: Props) {
       </div>
 
       <div className="flex flex-col items-center text-center px-1">
+        {book.rating && (
+          <div className="flex gap-0.5 mb-2">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <Star 
+                key={star} 
+                size={10} 
+                className={star <= book.rating! ? 'text-amber-500' : 'text-gray-200 dark:text-gray-800'} 
+                fill={star <= book.rating! ? 'currentColor' : 'none'} 
+              />
+            ))}
+          </div>
+        )}
         <h3 className="font-display font-black text-gray-900 dark:text-white leading-[1.2] mb-1 line-clamp-2 text-base md:text-[1.1rem] group-hover:text-amber-600 dark:group-hover:text-amber-500 transition-colors uppercase tracking-tight">{book.title}</h3>
         <p className="font-serif italic text-sm text-gray-400 dark:text-gray-500 line-clamp-1 mb-4">{book.author}</p>
         

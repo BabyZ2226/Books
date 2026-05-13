@@ -180,14 +180,16 @@ function BiblionotasApp() {
         userId: auth.currentUser!.uid,
         bookId,
         content,
-        reference,
-        relatedNoteIds,
-        audioData,
-        audioStartTime,
-        audioEndTime,
+        reference: reference || '',
+        relatedNoteIds: relatedNoteIds || [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
+      
+      if (audioData) newNote.audioData = audioData;
+      if (audioStartTime !== undefined) newNote.audioStartTime = audioStartTime;
+      if (audioEndTime !== undefined) newNote.audioEndTime = audioEndTime;
+      
       addOrUpdateNote(newNote);
     }
   };
@@ -219,7 +221,9 @@ function BiblionotasApp() {
   const filteredAndSortedBooks = useMemo(() => {
     let result = books.filter(b => 
       b.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      b.author.toLowerCase().includes(searchTerm.toLowerCase())
+      b.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (b.genre && b.genre.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (b.tags && b.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())))
     );
 
     const getLastUpdated = (bookId: string) => {

@@ -3,6 +3,8 @@ import { ArrowLeft, BookOpen, Trash2, Edit3, Image as ImageIcon, Save, Plus, Sta
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { Glossary } from './Glossary';
+import { BookStats } from './BookStats';
+import { FlashcardQuiz } from './FlashcardQuiz';
 import { ConfirmModal } from './ConfirmModal';
 import { GoogleGenAI } from '@google/genai';
 import { Book, Note, GlossaryTerm, Flashcard, ChatMessage, BookStatus, Insight, BookRecommendation } from '../types';
@@ -81,7 +83,8 @@ const FlashcardItem = ({ card, onDelete }: { card: Flashcard, onDelete: () => vo
 };
 
 export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteBook, onSaveNote, onDeleteNote, onToggleNoteFavorite, onAddTerm, onDeleteTerm }: Props) {
-  const [activeTab, setActiveTab] = useState<'notes' | 'glossary' | 'flashcards' | 'chat' | 'insights' | 'recommendations'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'glossary' | 'flashcards' | 'chat' | 'insights' | 'recommendations' | 'stats'>('notes');
+  const [isQuizMode, setIsQuizMode] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [currentNote, setCurrentNote] = useState('');
   const [currentReference, setCurrentReference] = useState('');
@@ -847,6 +850,32 @@ Devuelve estrictamente un JSON con este formato exacto:
               </motion.h1>
               <div className="flex flex-wrap items-center gap-6">
                 <p className="text-xl text-gray-400 dark:text-gray-500 font-serif italic">{book.author}</p>
+                {book.genre && (
+                  <span className="px-3 py-1 bg-amber-500/10 text-amber-500 text-[10px] font-black uppercase tracking-widest rounded-lg border border-amber-500/20">
+                    {book.genre}
+                  </span>
+                )}
+                {book.tags && book.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {book.tags.map(tag => (
+                      <span key={tag} className="px-2 py-0.5 bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400 text-[9px] font-black uppercase tracking-widest rounded-md border border-gray-100 dark:border-white/10">
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {book.rating && (
+                  <div className="flex gap-1 ml-auto">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star 
+                        key={star} 
+                        size={16} 
+                        className={star <= book.rating! ? 'text-amber-500' : 'text-gray-200 dark:text-gray-800'} 
+                        fill={star <= book.rating! ? 'currentColor' : 'none'} 
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -950,14 +979,27 @@ Devuelve estrictamente un JSON con este formato exacto:
                   </div>
                 )}
                 {book.summary && (
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    onClick={() => setIsEditingSummary(true)}
-                    className="absolute -right-3 -top-3 p-2.5 bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-500 border border-gray-100 dark:border-white/10 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-all"
-                    title="Editar resumen"
-                  >
-                    <Edit3 size={16} />
-                  </motion.button>
+                  <div className="absolute -right-3 -top-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(book.summary || '');
+                        alert('Resumen copiado al portapapeles');
+                      }}
+                      className="p-2.5 bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-500 border border-gray-100 dark:border-white/10 rounded-xl shadow-xl transition-all"
+                      title="Copiar resumen"
+                    >
+                      <Download size={16} />
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      onClick={() => setIsEditingSummary(true)}
+                      className="p-2.5 bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-500 border border-gray-100 dark:border-white/10 rounded-xl shadow-xl transition-all"
+                      title="Editar resumen"
+                    >
+                      <Edit3 size={16} />
+                    </motion.button>
+                  </div>
                 )}
               </motion.div>
             )}
@@ -1021,6 +1063,18 @@ Devuelve estrictamente un JSON con este formato exacto:
                 <span>Recomendaciones</span>
               </div>
               {activeTab === 'recommendations' && (
+                <motion.div layoutId="activeTabIndicator" className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500 rounded-full" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('stats')}
+              className={`pb-4 text-xs md:text-sm uppercase tracking-[0.2em] font-black transition-all relative whitespace-nowrap px-2 ${activeTab === 'stats' ? 'text-gray-900 dark:text-white' : 'text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400'}`}
+            >
+              <div className="flex items-center space-x-2">
+                <LayoutGrid size={16} />
+                <span>Estadísticas</span>
+              </div>
+              {activeTab === 'stats' && (
                 <motion.div layoutId="activeTabIndicator" className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500 rounded-full" />
               )}
             </button>
@@ -1516,20 +1570,34 @@ Devuelve estrictamente un JSON con este formato exacto:
                     <h3 className="text-2xl font-display font-black text-white mb-2 uppercase tracking-tight">SABIDURÍA DE ESTUDIO</h3>
                     <p className="text-sm text-gray-400 font-serif italic max-w-xs">IA entrenada para extraer los conceptos clave y ponerte a prueba.</p>
                   </div>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleGenerateFlashcards}
-                    disabled={isGeneratingCards}
-                    className="relative z-10 flex items-center gap-3 bg-amber-500 hover:bg-amber-400 text-black px-10 py-4 rounded-2xl text-xs font-black transition-all shadow-xl shadow-amber-500/20 uppercase tracking-[0.2em] disabled:opacity-50"
-                  >
-                    {isGeneratingCards ? (
-                      <Loader2 size={18} className="animate-spin" />
-                    ) : (
-                      <Brain size={18} />
+                  <div className="flex flex-col md:flex-row gap-4 relative z-10 w-full md:w-auto">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={handleGenerateFlashcards}
+                      disabled={isGeneratingCards}
+                      className="flex items-center gap-3 bg-amber-500 hover:bg-amber-400 text-black px-10 py-4 rounded-2xl text-xs font-black transition-all shadow-xl shadow-amber-500/20 uppercase tracking-[0.2em] disabled:opacity-50"
+                    >
+                      {isGeneratingCards ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : (
+                        <Brain size={18} />
+                      )}
+                      <span>{isGeneratingCards ? 'Conectando...' : 'Generar Baraja'}</span>
+                    </motion.button>
+                    
+                    {flashcards.length > 0 && (
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => setIsQuizMode(true)}
+                        className="flex items-center gap-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-900 dark:text-white border border-gray-100 dark:border-white/10 px-10 py-4 rounded-2xl text-xs font-black transition-all shadow-xl dark:shadow-none uppercase tracking-[0.2em]"
+                      >
+                        <Zap size={18} className="text-amber-500" />
+                        <span>Sesión de Estudio</span>
+                      </motion.button>
                     )}
-                    <span>{isGeneratingCards ? 'Conectando...' : 'Generar Baraja'}</span>
-                  </motion.button>
+                  </div>
                 </div>
 
                 {flashcards.length === 0 ? (
@@ -1656,6 +1724,13 @@ Devuelve estrictamente un JSON con este formato exacto:
                   ))}
                 </div>
               </motion.div>
+            ) : activeTab === 'stats' ? (
+              <BookStats 
+                book={book} 
+                notes={notes} 
+                flashcards={flashcards} 
+                terms={terms} 
+              />
             ) : (
               <motion.div
                 key="chat"
@@ -1783,6 +1858,13 @@ Devuelve estrictamente un JSON con este formato exacto:
         }}
         onCancel={() => setConfirmDeleteNoteId(null)}
       />
+
+      {isQuizMode && (
+        <FlashcardQuiz 
+          flashcards={flashcards} 
+          onClose={() => setIsQuizMode(false)} 
+        />
+      )}
     </motion.div>
   );
 }

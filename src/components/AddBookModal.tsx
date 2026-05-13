@@ -25,6 +25,15 @@ export function AddBookModal({ isOpen, onClose, onAddBook }: Props) {
   const [coverUrl, setCoverUrl] = useState('');
   const [status, setStatus] = useState<BookStatus>('Por leer');
   const [totalPages, setTotalPages] = useState<number | ''>('');
+  const [genre, setGenre] = useState('');
+  const [tags, setTags] = useState('');
+  const [rating, setRating] = useState<number>(0);
+
+  const GENRES = [
+    'Ficción', 'No Ficción', 'Ciencia Ficción', 'Fantasía', 'Misterio', 
+    'Romance', 'Biografía', 'Historia', 'Autoayuda', 'Negocios', 
+    'Clásicos', 'Filosofía', 'Poesía', 'Arte', 'Otro'
+  ];
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -42,6 +51,9 @@ export function AddBookModal({ isOpen, onClose, onAddBook }: Props) {
       setCoverUrl('');
       setStatus('Por leer');
       setTotalPages('');
+      setGenre('');
+      setTags('');
+      setRating(0);
       setSearchQuery('');
       setSearchResults([]);
       setIsSearching(false);
@@ -114,6 +126,9 @@ export function AddBookModal({ isOpen, onClose, onAddBook }: Props) {
       author: author.trim(),
       coverUrl: coverUrl.trim(),
       status,
+      genre: genre || 'General',
+      tags: tags.split(',').map(tag => tag.trim()).filter(Boolean),
+      rating: rating || undefined,
       ...(totalPages !== '' && !isNaN(totalPages) && totalPages > 0 ? { totalPages: Number(totalPages) } : {})
     });
 
@@ -278,10 +293,30 @@ export function AddBookModal({ isOpen, onClose, onAddBook }: Props) {
                         <option value="Por leer">Por leer</option>
                         <option value="Leyendo">Leyendo</option>
                         <option value="Terminado">Terminado</option>
+                        <option value="Abandonado">Abandonado</option>
                       </select>
                     </div>
                   </div>
 
+                  <div>
+                    <label htmlFor="genre" className="block text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3 ml-2">Género</label>
+                    <div className="relative">
+                      <select
+                        id="genre"
+                        value={genre}
+                        onChange={(e) => setGenre(e.target.value)}
+                        className="w-full px-6 py-4 bg-gray-50/50 dark:bg-white/5 border border-transparent rounded-[1.75rem] text-sm outline-none focus:bg-white dark:focus:bg-gray-800 focus:ring-4 focus:ring-amber-500/5 focus:border-amber-500 transition-all appearance-none font-serif italic dark:text-white"
+                      >
+                        <option value="">Seleccionar...</option>
+                        {GENRES.map(g => (
+                          <option key={g} value={g}>{g}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label htmlFor="totalPages" className="block text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3 ml-2">Extensión</label>
                     <input
@@ -293,6 +328,34 @@ export function AddBookModal({ isOpen, onClose, onAddBook }: Props) {
                       className="w-full px-6 py-4 bg-gray-50/50 dark:bg-white/5 border border-transparent rounded-[1.75rem] text-sm outline-none focus:bg-white dark:focus:bg-gray-800 focus:ring-4 focus:ring-amber-500/5 focus:border-amber-500 transition-all font-serif italic dark:text-white"
                       placeholder="Páginas"
                     />
+                  </div>
+
+                  <div>
+                    <label htmlFor="tags" className="block text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3 ml-2">Etiquetas</label>
+                    <input
+                      id="tags"
+                      type="text"
+                      value={tags}
+                      onChange={(e) => setTags(e.target.value)}
+                      className="w-full px-6 py-4 bg-gray-50/50 dark:bg-white/5 border border-transparent rounded-[1.75rem] text-sm outline-none focus:bg-white dark:focus:bg-gray-800 focus:ring-4 focus:ring-amber-500/5 focus:border-amber-500 transition-all font-serif italic dark:text-white"
+                      placeholder="Ej. suspenso, clásico"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <label className="block text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3 ml-2">Calificación</label>
+                  <div className="flex gap-2 p-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setRating(star)}
+                        className={`hover:scale-110 transition-all ${rating >= star ? 'text-amber-500' : 'text-gray-200 dark:text-gray-700'}`}
+                      >
+                        <Star size={24} fill={rating >= star ? 'currentColor' : 'none'} />
+                      </button>
+                    ))}
                   </div>
                 </div>
 
