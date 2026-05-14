@@ -40,6 +40,30 @@ service cloud.firestore {
         && data.bookId is string;
     }
 
+    function isValidFlashcard(data) {
+      return data.id is string
+        && data.userId == request.auth.uid
+        && data.bookId is string
+        && data.question is string
+        && data.answer is string;
+    }
+
+    function isValidInsight(data) {
+      return data.id is string
+        && data.userId == request.auth.uid
+        && data.bookId is string
+        && data.title is string
+        && data.description is string;
+    }
+
+    function isValidChatMessage(data) {
+      return data.id is string
+        && data.userId == request.auth.uid
+        && data.bookId is string
+        && data.role in ['user', 'assistant']
+        && data.content is string;
+    }
+
     // Books Collection
     match /books/{bookId} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
@@ -96,6 +120,30 @@ service cloud.firestore {
         && incoming().id == existing().id
         && incoming().bookId == existing().bookId;
         
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Flashcards Collection
+    match /flashcards/{cardId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(cardId) && isValidFlashcard(incoming()) && incoming().id == cardId;
+      allow update: if isSignedIn() && isValidId(cardId) && existing().userId == request.auth.uid && isValidFlashcard(incoming()) && incoming().userId == existing().userId && incoming().id == existing().id;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Insights Collection
+    match /insights/{insightId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(insightId) && isValidInsight(incoming()) && incoming().id == insightId;
+      allow update: if isSignedIn() && isValidId(insightId) && existing().userId == request.auth.uid && isValidInsight(incoming()) && incoming().userId == existing().userId && incoming().id == existing().id;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Chat Messages Collection
+    match /chat_messages/{messageId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(messageId) && isValidChatMessage(incoming()) && incoming().id == messageId;
+      allow update: if false; // Messages are immutable
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
   }

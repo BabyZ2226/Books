@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Book, BookStatus } from '../types';
-import { X, Search, Book as BookIcon, Loader2 } from 'lucide-react';
+import { X, Search, Book as BookIcon, Loader2, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Props {

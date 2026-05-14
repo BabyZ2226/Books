@@ -53,7 +53,12 @@ export default function App() {
 }
 
 function BiblionotasApp() {
-  const { books, notes, terms, loading, addOrUpdateBook, deleteBook, addOrUpdateNote, deleteNote, addOrUpdateTerm, deleteTerm } = useBiblionotasData();
+  const { 
+    books, notes, terms, flashcards, insights, chatMessages, loading, 
+    addOrUpdateBook, deleteBook, addOrUpdateNote, deleteNote, addOrUpdateTerm, deleteTerm,
+    addOrUpdateFlashcard, deleteFlashcard, addOrUpdateInsight, deleteInsight,
+    addChatMessage, clearChatMessages
+  } = useBiblionotasData();
   const [isDarkMode, setIsDarkMode] = useLocalStorage<boolean>('biblionotas-dark-mode', false);
   const [recommendations, setRecommendations] = useLocalStorage<BookRecommendation[]>('biblionotas-recommendations', []);
   const [isGeneratingRecommendations, setIsGeneratingRecommendations] = useState(false);
@@ -340,6 +345,9 @@ function BiblionotasApp() {
               book={selectedBook}
               notes={notes.filter(n => n.bookId === selectedBook.id)}
               terms={terms.filter(t => t.bookId === selectedBook.id)}
+              flashcards={flashcards}
+              insights={insights}
+              chatMessages={chatMessages}
               onBack={() => setSelectedBookId(null)}
               onUpdateBook={handleUpdateBook}
               onDeleteBook={handleDeleteBook}
@@ -348,6 +356,12 @@ function BiblionotasApp() {
               onToggleNoteFavorite={handleToggleNoteFavorite}
               onAddTerm={handleAddTerm}
               onDeleteTerm={handleDeleteTerm}
+              onAddFlashcard={addOrUpdateFlashcard}
+              onDeleteFlashcard={deleteFlashcard}
+              onAddInsight={addOrUpdateInsight}
+              onDeleteInsight={deleteInsight}
+              onAddChatMessage={addChatMessage}
+              onClearChat={clearChatMessages}
             />
           ) : (
             <motion.div

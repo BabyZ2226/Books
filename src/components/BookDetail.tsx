@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ArrowLeft, BookOpen, Trash2, Edit3, Image as ImageIcon, Save, Plus, Star, BookText, GraduationCap, Sparkles, Loader2, Download, Mic, Square, Pause, Play, Send, Brain, MessageSquare, Zap, RotateCcw, BrainCircuit, Link2, ExternalLink, X, Maximize2, ChevronLeft, ChevronRight, List, LayoutGrid, FolderClosed, FolderOpen, ChevronDown } from 'lucide-react';
+import { ArrowLeft, BookOpen, Trash2, Edit3, Image as ImageIcon, Save, Plus, Star, BookText, GraduationCap, Sparkles, Loader2, Download, Mic, Square, Pause, Play, Send, Brain, MessageSquare, Zap, RotateCcw, BrainCircuit, Link2, ExternalLink, X, Maximize2, ChevronLeft, ChevronRight, List, LayoutGrid, FolderClosed, FolderOpen, ChevronDown, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { Glossary } from './Glossary';
@@ -14,6 +14,9 @@ interface Props {
   book: Book;
   notes: Note[];
   terms: GlossaryTerm[];
+  flashcards: Flashcard[];
+  insights: Insight[];
+  chatMessages: ChatMessage[];
   onBack: () => void;
   onUpdateBook: (book: Book) => void;
   onDeleteBook: (id: string) => void;
@@ -22,6 +25,12 @@ interface Props {
   onToggleNoteFavorite: (noteId: string) => void;
   onAddTerm: (term: Omit<GlossaryTerm, 'userId'>) => void;
   onDeleteTerm: (termId: string) => void;
+  onAddFlashcard: (card: Flashcard) => void;
+  onDeleteFlashcard: (id: string) => void;
+  onAddInsight: (insight: Insight) => void;
+  onDeleteInsight: (id: string) => void;
+  onAddChatMessage: (bookId: string, message: ChatMessage) => void;
+  onClearChat: (bookId: string) => void;
 }
 
 const FlashcardItem = ({ card, onDelete }: { card: Flashcard, onDelete: () => void }) => {
@@ -82,7 +91,232 @@ const FlashcardItem = ({ card, onDelete }: { card: Flashcard, onDelete: () => vo
   );
 };
 
-export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteBook, onSaveNote, onDeleteNote, onToggleNoteFavorite, onAddTerm, onDeleteTerm }: Props) {
+const EmptyNotes = ({ showFavoritesOnly, openEditorForNew }: { showFavoritesOnly: boolean, openEditorForNew: () => void }) => (
+  <div className="text-center py-20 px-6 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-[3rem] bg-gray-50/50 dark:bg-white/5">
+    <div className="w-20 h-20 bg-white dark:bg-gray-800 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl text-gray-200 dark:text-gray-700">
+      <BookText size={40} />
+    </div>
+    <p className="text-gray-500 dark:text-gray-400 mb-4 font-serif italic text-lg">
+      {showFavoritesOnly ? "No hay destellos de sabiduría favoritos aún." : "El conocimiento está esperando a ser capturado..."}
+    </p>
+    {!showFavoritesOnly && (
+      <button 
+        onClick={openEditorForNew}
+        className="text-amber-500 font-black uppercase tracking-widest text-xs hover:text-amber-600 transition-colors"
+      >
+        Escribe tu primera gran idea
+      </button>
+    )}
+  </div>
+);
+
+const NoteCard = ({ note, viewMode, isLinkingNoteId, setIsLinkingNoteId, handleToggleNoteRelation, onToggleNoteFavorite, openEditorForEdit, setConfirmDeleteNoteId, formatTime, notesAll }: any) => {
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      layout
+      className={`bg-white dark:bg-gray-900 p-8 rounded-[2.5rem] border transition-all group relative break-inside-avoid ${viewMode === 'grid' ? 'mb-6 md:mb-6 mt-0 inline-block w-full' : ''} ${isLinkingNoteId === note.id ? 'border-amber-500 ring-4 ring-amber-500/5 shadow-2xl shadow-amber-500/10' : 'border-gray-100 dark:border-white/5 shadow-xl shadow-gray-200/20 dark:shadow-none hover:shadow-2xl hover:border-amber-500/30'}`}
+    >
+      <div className="flex justify-between items-start mb-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="px-3 py-1 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-100 dark:border-white/10">
+            <span className="text-[9px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-widest font-sans">
+              {new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' }).format(note.createdAt)}
+            </span>
+          </div>
+          {note.reference && (
+            <span className="px-4 py-1.5 bg-amber-500 text-black text-[10px] font-black uppercase tracking-[0.05em] rounded-full shadow-lg shadow-amber-500/10">
+              {note.reference}
+            </span>
+          )}
+        </div>
+        <div className="flex space-x-2 items-center">
+          {isLinkingNoteId && isLinkingNoteId !== note.id && (
+            <motion.button
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => {
+                handleToggleNoteRelation(isLinkingNoteId, note.id);
+                setIsLinkingNoteId(null);
+              }}
+              className="flex items-center gap-2 bg-amber-500 text-black px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-amber-500/20"
+            >
+              <Link2 size={12} />
+              Vincular
+            </motion.button>
+          )}
+
+          <button 
+            onClick={() => onToggleNoteFavorite(note.id)}
+            className={`p-2.5 rounded-2xl transition-all ${note.isFavorite ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'text-gray-300 dark:text-gray-600 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10'}`}
+          >
+            <Star size={18} fill={note.isFavorite ? "currentColor" : "none"} />
+          </button>
+          
+          <div className="flex bg-gray-50 dark:bg-white/5 p-1 rounded-2xl border border-gray-100 dark:border-white/10 opacity-0 group-hover:opacity-100 transition-all scale-95 group-hover:scale-100">
+            <button 
+              onClick={() => openEditorForEdit(note)}
+              className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white"
+            >
+              <Edit3 size={16} />
+            </button>
+            <button 
+              onClick={() => setConfirmDeleteNoteId(note.id)}
+              className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-500"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <div className="prose prose-sm md:prose-base dark:prose-invert prose-amber max-w-none text-gray-700 dark:text-gray-300 font-serif leading-relaxed text-lg mb-6">
+        <ReactMarkdown>{note.content}</ReactMarkdown>
+      </div>
+
+      {note.audioData && (
+        <div className="mb-6 bg-gradient-to-br from-gray-50 to-white dark:from-white/5 dark:to-transparent rounded-[2rem] p-5 border border-gray-100 dark:border-white/10 shadow-inner">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-amber-500/20">
+              <Play size={20} className="text-black ml-1" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-500">Audio Revelación</span>
+              {note.audioStartTime !== undefined && (
+                <span className="text-[11px] font-mono font-bold text-gray-400 dark:text-gray-500">
+                  {formatTime(note.audioStartTime)} — {note.audioEndTime !== undefined ? formatTime(note.audioEndTime) : 'Final'}
+                </span>
+              )}
+            </div>
+          </div>
+          <audio 
+            src={`data:audio/webm;base64,${note.audioData}`} 
+            controls 
+            className="h-10 w-full opacity-40 hover:opacity-100 transition-opacity filter grayscale invert" 
+          />
+        </div>
+      )}
+
+      {note.relatedNoteIds && note.relatedNoteIds.length > 0 && (
+        <div className="pt-6 border-t border-gray-50 dark:border-white/5 mt-6">
+          <div className="flex items-center gap-2 mb-4">
+            <BrainCircuit size={14} className="text-amber-500" />
+            <span className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-widest">Simbiosis de Ideas</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {note.relatedNoteIds.map(relId => {
+              const relNote = notesAll.find((n:any) => n.id === relId);
+              if (!relNote) return null;
+              return (
+                <button
+                  key={relId}
+                  onClick={() => {
+                    const element = document.getElementById(`note-${relId}`);
+                    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }}
+                  className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 hover:bg-amber-500 hover:text-black hover:border-amber-400 px-4 py-2 rounded-2xl border border-gray-100 dark:border-white/10 transition-all text-xs font-medium text-gray-500 dark:text-gray-400 truncate max-w-[240px]"
+                >
+                  <Link2 size={12} className="shrink-0" />
+                  <span className="truncate">{relNote.content.substring(0, 40)}...</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      
+      {!isLinkingNoteId && (
+        <button 
+          onClick={() => setIsLinkingNoteId(note.id)}
+          className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-white text-white dark:text-black text-[9px] font-black uppercase tracking-[0.2em] px-4 py-2 rounded-full opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all shadow-xl z-10"
+        >
+          Conectar Idea
+        </button>
+      )}
+    </motion.div>
+  );
+};
+
+const ChapterSection = ({ chapter, notes, viewMode, isExpanded, onToggle, ...props }: any) => {
+  if (notes.length === 0) return null;
+  
+  return (
+    <div key={chapter} className="space-y-2 relative">
+      <motion.button 
+        layout
+        onClick={onToggle}
+        className={`w-full flex items-center justify-between group py-5 px-6 rounded-[2.5rem] border transition-all text-left ${isExpanded ? 'bg-amber-500 border-amber-400 shadow-xl shadow-amber-500/20' : 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/5 hover:border-amber-500/50 shadow-sm'}`}
+      >
+        <div className="flex items-center gap-4">
+          <div className={`p-3 rounded-2xl transition-all ${isExpanded ? 'bg-black/10 text-black' : 'bg-gray-50 dark:bg-white/5 text-amber-500'}`}>
+            {isExpanded ? <FolderOpen size={20} /> : <FolderClosed size={20} />}
+          </div>
+          <div>
+            <h3 className={`text-lg font-display font-black uppercase tracking-tight ${isExpanded ? 'text-black' : 'text-gray-900 dark:text-white'}`}>{chapter}</h3>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${isExpanded ? 'text-black/50' : 'text-gray-400 dark:text-gray-500'}`}>{notes.length} {notes.length === 1 ? 'Nota' : 'Notas de Sabiduría'}</span>
+          </div>
+        </div>
+        <motion.div
+          animate={{ rotate: isExpanded ? 180 : 0 }}
+          className={isExpanded ? 'text-black' : 'text-gray-300 group-hover:text-amber-500'}
+        >
+          <ChevronDown size={20} />
+        </motion.div>
+      </motion.button>
+
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
+            className="overflow-hidden"
+          >
+            <div className={`pt-6 pb-10 ${viewMode === 'grid' ? "columns-1 md:columns-2 gap-6 space-y-6 md:space-y-0" : "space-y-6"}`}>
+              {notes.map((note:any, index: number) => (
+                <motion.div
+                  key={note.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <NoteCard note={note} viewMode={viewMode} {...props} />
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export function BookDetail({ 
+  book, 
+  notes, 
+  terms, 
+  flashcards: firestoreFlashcards,
+  insights: firestoreInsights,
+  chatMessages: firestoreChatMessages,
+  onBack, 
+  onUpdateBook, 
+  onDeleteBook, 
+  onSaveNote, 
+  onDeleteNote, 
+  onToggleNoteFavorite, 
+  onAddTerm, 
+  onDeleteTerm,
+  onAddFlashcard,
+  onDeleteFlashcard,
+  onAddInsight,
+  onDeleteInsight,
+  onAddChatMessage,
+  onClearChat
+}: Props) {
   const [activeTab, setActiveTab] = useState<'notes' | 'glossary' | 'flashcards' | 'chat' | 'insights' | 'recommendations'>('notes');
   const [isQuizMode, setIsQuizMode] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
@@ -98,36 +332,29 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isLinkingNoteId, setIsLinkingNoteId] = useState<string | null>(null);
 
-  // Flashcards state
-  const [flashcards, setFlashcards] = useLocalStorage<Flashcard[]>(`flashcards-${book.id}`, []);
+  // Filter Firestore data for this specific book
+  const bookFlashcards = useMemo(() => firestoreFlashcards.filter(f => f.bookId === book.id), [firestoreFlashcards, book.id]);
+  const bookInsights = useMemo(() => firestoreInsights.filter(i => i.bookId === book.id), [firestoreInsights, book.id]);
+  const bookChatMessages = useMemo(() => firestoreChatMessages.filter((m: any) => m.bookId === book.id), [firestoreChatMessages, book.id]);
+
   const [isGeneratingCards, setIsGeneratingCards] = useState(false);
-  
-  // Insights state
-  const [insights, setInsights] = useLocalStorage<Insight[]>(`insights-${book.id}`, []);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   
-  // Recommendations state
+  // Recommendations state (still in local storage as they are transient suggestions)
   const [recommendations, setRecommendations] = useLocalStorage<BookRecommendation[]>(`recommendations-${book.id}`, []);
   const [isGeneratingRecommendations, setIsGeneratingRecommendations] = useState(false);
   
   // Chat state
-  const [chatMessages, setChatMessages] = useLocalStorage<ChatMessage[]>(`chat-history-${book.id}`, []);
   const [currentInput, setCurrentInput] = useState('');
   const [isAiResponding, setIsAiResponding] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processingPhase, setProcessingPhase] = useState("");
+  const [selectedChapter, setSelectedChapter] = useState<string | 'all'>('all');
   const audioInputRef = useRef<HTMLInputElement>(null);
-  const [pendingAudio, setPendingAudio] = useLocalStorage<string | null>(`pending-audio-${book.id}`, null);
+  const [pendingAudio, setPendingAudio] = useState<string | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const chatEndRef = useRef<HTMLDivElement>(null);
-
-  // Resume pending audio processing on mount
-  useEffect(() => {
-    if (pendingAudio && !isProcessingAudio) {
-      processAudio(pendingAudio);
-    }
-  }, []);
 
   const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({});
 
@@ -210,7 +437,7 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [chatMessages, activeTab]);
+  }, [bookChatMessages, activeTab]);
 
   // Audio Recording State
   const [isRecording, setIsRecording] = useState(false);
@@ -238,7 +465,18 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      
+      const options = {
+        audioBitsPerSecond: 16000,
+        mimeType: 'audio/webm;codecs=opus'
+      };
+
+      // Fallback if audio/webm;codecs=opus is not supported
+      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+        options.mimeType = 'audio/webm';
+      }
+
+      const recorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
@@ -253,7 +491,7 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
 
       timerRef.current = window.setInterval(() => {
         setRecordingTime(prev => {
-          if (prev >= 1199) { // 20 minutes limit
+          if (prev >= 1799) { // 30 minutes limit
             finishRecording();
             return prev + 1;
           }
@@ -280,7 +518,7 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
       setIsPaused(false);
       timerRef.current = window.setInterval(() => {
         setRecordingTime(prev => {
-          if (prev >= 1199) { // 20 minutes limit
+          if (prev >= 1799) { // 30 minutes limit
             finishRecording();
             return prev + 1;
           }
@@ -359,8 +597,14 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
       setIsProcessingAudio(true);
       setProcessingProgress(0);
       setProcessingPhase("Iniciando análisis neuronal...");
-      setPendingAudio(base64Audio); // Persist immediately
+      setPendingAudio(base64Audio); // Keep in memory for the duration of processing
       setShowAudioPreview(false);
+
+      const isTooLargeForStorage = base64Audio.length > 800000;
+      
+      if (isTooLargeForStorage) {
+        setProcessingPhase("Nota: El audio es extenso, se extraerán las notas pero no se guardará el archivo para escucha posterior.");
+      }
 
       const progressInterval = setInterval(() => {
         setProcessingProgress(prev => {
@@ -370,7 +614,7 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
       }, 1000);
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const prompt = `Actúa como un tutor literario de alto nivel especializado en adolescentes. He grabado un audio de hasta 20 minutos sobre el libro "${book.title}" de "${book.author}".
+      const prompt = `Actúa como un tutor literario de alto nivel especializado en adolescentes. He grabado un audio de hasta 30 minutos sobre el libro "${book.title}" de "${book.author}".
         
 Tu tarea:
 1. DIVISIÓN POR CAPÍTULOS Y PÁGINAS (CRÍTICO): Identifica CADA sección del audio donde hablo de un capítulo o página específica.
@@ -421,7 +665,7 @@ Si no detectas una referencia clara a una página o capítulo, usa una descripci
             noteData.reference || undefined,
             undefined,
             undefined,
-            base64Audio,
+            isTooLargeForStorage ? undefined : base64Audio,
             noteData.startTime,
             noteData.endTime
           );
@@ -565,14 +809,16 @@ Si no detectas una referencia clara a una página o capítulo, usa una descripci
       
       const result = JSON.parse(response.text || '{}');
       if (result.flashcards) {
-        const newCards: Flashcard[] = result.flashcards.map((c: any) => ({
-          id: Math.random().toString(36).substr(2, 9),
-          bookId: book.id,
-          question: c.question,
-          answer: c.answer,
-          createdAt: Date.now()
-        }));
-        setFlashcards(prev => [...newCards, ...prev]);
+        for (const c of result.flashcards) {
+          onAddFlashcard({
+            id: crypto.randomUUID(),
+            userId: '', // Will be set by hook
+            bookId: book.id,
+            question: c.question,
+            answer: c.answer,
+            createdAt: Date.now()
+          });
+        }
       }
     } catch (error) {
       console.error('Error generating cards:', error);
@@ -614,15 +860,17 @@ ${notes.map(n => n.content).join('\n')}`;
       
       const result = JSON.parse(response.text || '{}');
       if (result.insights) {
-        const newInsights: Insight[] = result.insights.map((c: any) => ({
-          id: Math.random().toString(36).substr(2, 9),
-          bookId: book.id,
-          title: c.title,
-          description: c.description,
-          type: c.type,
-          createdAt: Date.now()
-        }));
-        setInsights(newInsights); // Update all
+        for (const c of result.insights) {
+          onAddInsight({
+            id: crypto.randomUUID(),
+            userId: '', // Will be set by hook
+            bookId: book.id,
+            title: c.title,
+            description: c.description,
+            type: c.type,
+            createdAt: Date.now()
+          });
+        }
       }
     } catch (error) {
       console.error('Error generating insights:', error);
@@ -683,7 +931,7 @@ Devuelve estrictamente un JSON con este formato exacto:
       timestamp: Date.now()
     };
 
-    setChatMessages(prev => [...prev, newUserMessage]);
+    onAddChatMessage(book.id, newUserMessage);
     setCurrentInput('');
     setIsAiResponding(true);
 
@@ -707,7 +955,7 @@ Devuelve estrictamente un JSON con este formato exacto:
         timestamp: Date.now()
       };
 
-      setChatMessages(prev => [...prev, aiResponse]);
+      onAddChatMessage(book.id, aiResponse);
     } catch (error) {
       console.error('Chat error:', error);
     } finally {
@@ -1334,71 +1582,93 @@ Devuelve estrictamente un JSON con este formato exacto:
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
               >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-                  <div className="flex flex-wrap items-center gap-4">
-                    <h2 className="text-3xl font-display font-black text-gray-900 dark:text-white tracking-tight uppercase">Notas de Sabiduría</h2>
-                    <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl">
+                {/* Chapter Navigation Bar - Revolutionary Horizontal Scroll */}
+                <div className="mb-8 -mx-4 md:mx-0 overflow-hidden">
+                  <div className="px-4 md:px-0 flex items-center justify-between gap-4 mb-4">
+                    <h2 className="text-2xl md:text-3xl font-display font-black text-gray-900 dark:text-white tracking-tight uppercase">Ideas & Sabiduría</h2>
+                    <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-2xl">
                       <button
-                        onClick={() => setShowFavoritesOnly(false)}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${!showFavoritesOnly ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400'}`}
+                        onClick={() => setViewMode('list')}
+                        className={`p-2 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'}`}
                       >
-                        Todas
+                        <List size={16} />
                       </button>
                       <button
-                        onClick={() => setShowFavoritesOnly(true)}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${showFavoritesOnly ? 'bg-white dark:bg-gray-800 text-amber-500 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400'}`}
+                        onClick={() => setViewMode('grid')}
+                        className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'}`}
                       >
-                        Favoritas
+                        <LayoutGrid size={16} />
                       </button>
                     </div>
+                    
+                    {selectedChapter === 'all' && groupedNotesList.chapters.length > 0 && (
+                      <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-2xl ml-2">
+                        <button
+                          onClick={() => {
+                            const newState: Record<string, boolean> = {};
+                            groupedNotesList.chapters.forEach(ch => newState[ch] = true);
+                            setExpandedChapters(newState);
+                          }}
+                          className="px-3 py-1 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                        >
+                          Expandir
+                        </button>
+                        <button
+                          onClick={() => setExpandedChapters({})}
+                          className="px-3 py-1 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors border-l border-gray-200 dark:border-white/10"
+                        >
+                          Contraer
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl ml-auto sm:ml-0 self-end sm:self-auto shrink-0">
+
+                  <div className="flex items-center gap-3 overflow-x-auto no-scrollbar px-4 md:px-0 pb-4">
                     <button
-                      onClick={() => setViewMode('list')}
-                      className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400'}`}
+                      onClick={() => setSelectedChapter('all')}
+                      className={`shrink-0 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 relative overflow-hidden group ${selectedChapter === 'all' ? 'bg-amber-500 border-amber-400 text-black shadow-xl shadow-amber-500/20' : 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 text-gray-400 hover:border-amber-500/30'}`}
                     >
-                      <List size={16} />
+                      {selectedChapter === 'all' && (
+                        <motion.div layoutId="chapterGlow" className="absolute inset-0 bg-white/20 blur-xl group-hover:blur-2xl transition-all" />
+                      )}
+                      <span className="relative z-10">Todas {showFavoritesOnly && '★'}</span>
                     </button>
-                    <button
-                      onClick={() => setViewMode('grid')}
-                      className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400'}`}
-                    >
-                      <LayoutGrid size={16} />
-                    </button>
+                    
+                    {groupedNotesList.chapters.map(chapter => (
+                      <button
+                        key={chapter}
+                        onClick={() => setSelectedChapter(chapter)}
+                        className={`shrink-0 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 flex items-center gap-2 relative overflow-hidden group ${selectedChapter === chapter ? 'bg-amber-500 border-amber-400 text-black shadow-xl shadow-amber-500/20' : 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 text-gray-400 hover:border-amber-500/30'}`}
+                      >
+                         {selectedChapter === chapter && (
+                           <motion.div layoutId="chapterGlow" className="absolute inset-0 bg-white/20 blur-xl group-hover:blur-2xl transition-all" />
+                         )}
+                         <FolderClosed size={14} className={`relative z-10 ${selectedChapter === chapter ? 'text-black' : 'text-amber-500'}`} />
+                         <span className="relative z-10">{chapter}</span>
+                         <span className={`relative z-10 text-[10px] px-1.5 py-0.5 rounded-full ${selectedChapter === chapter ? 'bg-black/10' : 'bg-gray-100 dark:bg-white/10'}`}>
+                           {groupedNotesList.groups[chapter].length}
+                         </span>
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                {pendingAudio && !isProcessingAudio && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mb-8 p-6 bg-amber-50 rounded-[2.5rem] border-2 border-amber-200 flex flex-col md:flex-row items-center justify-between gap-4"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-amber-500 rounded-full flex items-center justify-center">
-                        <Sparkles size={24} className="text-black" />
-                      </div>
-                      <div>
-                        <h4 className="font-serif font-black text-amber-900 text-lg">Sesión Pendiente Detectada</h4>
-                        <p className="text-amber-700 text-xs">Parece que una grabación no terminó de procesarse. ¿Quieres analizarla ahora?</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3 shrink-0">
-                      <button 
-                        onClick={() => setPendingAudio(null)}
-                        className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-amber-900/50 hover:text-amber-900"
-                      >
-                        Descartar
-                      </button>
-                      <button 
-                        onClick={() => processAudio(pendingAudio)}
-                        className="px-6 py-3 bg-amber-500 text-black rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-amber-500/10"
-                      >
-                        Procesar Audio
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
+                <div className="flex items-center justify-between mb-8">
+                   <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-2xl">
+                    <button
+                      onClick={() => setShowFavoritesOnly(false)}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!showFavoritesOnly ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'}`}
+                    >
+                      Lineal
+                    </button>
+                    <button
+                      onClick={() => setShowFavoritesOnly(true)}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${showFavoritesOnly ? 'bg-white dark:bg-gray-800 text-amber-500 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'}`}
+                    >
+                      Importantes
+                    </button>
+                  </div>
+                </div>
 
                 {isProcessingAudio && (
                   <motion.div 
@@ -1484,207 +1754,49 @@ Devuelve estrictamente un JSON con este formato exacto:
                   </motion.div>
                 )}
 
-                <div className="space-y-6">
-                  {groupedNotesList.chapters.length === 0 && !isEditingNote && (
-                    <div className="text-center py-12 px-6 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-2xl bg-gray-50 dark:bg-white/5">
-                      <p className="text-gray-500 dark:text-gray-400 mb-2">
-                        {showFavoritesOnly ? "No hay notas favoritas aún." : "Aún no has escrito notas para este libro."}
-                      </p>
-                      {!showFavoritesOnly && (
-                        <button 
-                          onClick={openEditorForNew}
-                          className="text-amber-600 dark:text-amber-500 font-medium hover:text-amber-700 dark:hover:text-amber-400"
-                        >
-                          Escribe tu primera anotación
-                        </button>
-                      )}
-                    </div>
+                <div className="space-y-8">
+                  {selectedChapter === 'all' ? (
+                    // Logic for all notes grouped by chapters (Timeline style)
+                    groupedNotesList.chapters.length === 0 && !isEditingNote ? (
+                      <EmptyNotes showFavoritesOnly={showFavoritesOnly} openEditorForNew={openEditorForNew} />
+                    ) : (
+                      groupedNotesList.chapters.map(chapter => (
+                        <ChapterSection 
+                          key={chapter} 
+                          chapter={chapter} 
+                          notes={groupedNotesList.groups[chapter]} 
+                          viewMode={viewMode}
+                          isExpanded={expandedChapters[chapter]}
+                          onToggle={() => toggleChapter(chapter)}
+                          isLinkingNoteId={isLinkingNoteId}
+                          setIsLinkingNoteId={setIsLinkingNoteId}
+                          handleToggleNoteRelation={handleToggleNoteRelation}
+                          onToggleNoteFavorite={onToggleNoteFavorite}
+                          openEditorForEdit={openEditorForEdit}
+                          setConfirmDeleteNoteId={setConfirmDeleteNoteId}
+                          formatTime={formatTime}
+                          notesAll={notes}
+                        />
+                      ))
+                    )
+                  ) : (
+                    // Single chapter view
+                    <ChapterSection 
+                      chapter={selectedChapter} 
+                      notes={groupedNotesList.groups[selectedChapter] || []} 
+                      viewMode={viewMode}
+                      isExpanded={true}
+                      onToggle={() => {}}
+                      isLinkingNoteId={isLinkingNoteId}
+                      setIsLinkingNoteId={setIsLinkingNoteId}
+                      handleToggleNoteRelation={handleToggleNoteRelation}
+                      onToggleNoteFavorite={onToggleNoteFavorite}
+                      openEditorForEdit={openEditorForEdit}
+                      setConfirmDeleteNoteId={setConfirmDeleteNoteId}
+                      formatTime={formatTime}
+                      notesAll={notes}
+                    />
                   )}
-                  
-                  {groupedNotesList.chapters.map(chapter => (
-                    <div key={chapter} className="space-y-4">
-                      <button
-                        onClick={() => toggleChapter(chapter)}
-                        className={`w-full flex items-center justify-between p-5 rounded-[2.5rem] border transition-all group ${expandedChapters[chapter] ? 'bg-amber-500 border-amber-400 shadow-xl shadow-amber-500/10' : 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 hover:border-amber-500/30 shadow-sm'}`}
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className={`p-3 rounded-2xl transition-all ${expandedChapters[chapter] ? 'bg-white text-black' : 'bg-gray-100 dark:bg-white/10 text-gray-400 group-hover:text-amber-500'}`}>
-                            {expandedChapters[chapter] ? <FolderOpen size={24} /> : <FolderClosed size={24} />}
-                          </div>
-                          <div className="flex flex-col items-start">
-                            <h3 className={`font-display font-black uppercase tracking-tight text-lg ${expandedChapters[chapter] ? 'text-black' : 'text-gray-900 dark:text-white'}`}>{chapter}</h3>
-                            <span className={`text-[10px] font-black uppercase tracking-widest ${expandedChapters[chapter] ? 'text-black/60' : 'text-gray-400'}`}>
-                              {groupedNotesList.groups[chapter].length} {groupedNotesList.groups[chapter].length === 1 ? 'Idea' : 'Ideas'} grabadas
-                            </span>
-                          </div>
-                        </div>
-                        <div className={`transition-all duration-500 p-2 rounded-full ${expandedChapters[chapter] ? 'bg-black/10 rotate-180' : 'bg-gray-50 dark:bg-white/5'}`}>
-                          <ChevronDown size={20} className={expandedChapters[chapter] ? 'text-black' : 'text-gray-400'} />
-                        </div>
-                      </button>
-
-                      <AnimatePresence>
-                        {expandedChapters[chapter] && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="overflow-hidden"
-                          >
-                            <div className={viewMode === 'grid' ? "columns-1 md:columns-2 gap-6 space-y-6 md:space-y-0 pt-2" : "space-y-6 pt-2"}>
-                              {groupedNotesList.groups[chapter].map(note => (
-                                <motion.div 
-                                  key={note.id}
-                                  id={`note-${note.id}`}
-                                  layout
-                                  className={`bg-white dark:bg-gray-900 p-6 rounded-2xl border transition-all group relative break-inside-avoid ${viewMode === 'grid' ? 'mb-6 md:mb-6 mt-0 inline-block w-full' : ''} ${isLinkingNoteId === note.id ? 'border-amber-500 ring-2 ring-amber-500/10 dark:ring-amber-500/20' : 'border-gray-100 dark:border-white/5 shadow-sm dark:shadow-none'}`}
-                                >
-                                  <div className="flex justify-between items-start mb-4">
-                                    <div className="flex items-center gap-3">
-                                      <span className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-widest font-sans">
-                                        {new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(note.createdAt)}
-                                      </span>
-                                      {note.reference && (
-                                        <span className="px-3 py-1 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-500 text-[10px] font-black uppercase tracking-widest rounded-full border border-amber-100 dark:border-amber-500/20">
-                                          {note.reference}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="flex space-x-2 items-center">
-                                      {isLinkingNoteId && isLinkingNoteId !== note.id && (
-                                        <motion.button
-                                          initial={{ scale: 0.8, opacity: 0 }}
-                                          animate={{ scale: 1, opacity: 1 }}
-                                          whileHover={{ scale: 1.05 }}
-                                          whileTap={{ scale: 0.95 }}
-                                          onClick={() => {
-                                            handleToggleNoteRelation(isLinkingNoteId, note.id);
-                                            setIsLinkingNoteId(null);
-                                          }}
-                                          className="flex items-center gap-2 bg-amber-500 text-black px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-amber-500/20"
-                                        >
-                                          <Link2 size={12} />
-                                          Vincular Idea
-                                        </motion.button>
-                                      )}
-                                      
-                                      {isLinkingNoteId === note.id && (
-                                        <button 
-                                          onClick={() => setIsLinkingNoteId(null)}
-                                          className="text-red-500 text-[10px] font-black uppercase tracking-widest"
-                                        >
-                                          Cancelar conexión
-                                        </button>
-                                      )}
-
-                                      {!isLinkingNoteId && (
-                                        <button 
-                                          onClick={() => setIsLinkingNoteId(note.id)}
-                                          className="p-2 text-gray-300 dark:text-gray-600 hover:text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                          title="Relacionar con otra nota"
-                                        >
-                                          <Link2 size={18} />
-                                        </button>
-                                      )}
-
-                                      <button 
-                                        onClick={() => onToggleNoteFavorite(note.id)}
-                                        className={`p-2 md:p-1.5 rounded-md transition-colors ${note.isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600 hover:text-amber-500 opacity-100 lg:opacity-0 lg:group-hover:opacity-100'}`}
-                                        title={note.isFavorite ? "Quitar de favoritos" : "Marcar como importante"}
-                                      >
-                                        <Star size={18} fill={note.isFavorite ? "currentColor" : "none"} />
-                                      </button>
-                                      <div className="flex space-x-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity pl-1 border-l border-gray-100 dark:border-white/10">
-                                        <button 
-                                          onClick={() => openEditorForEdit(note)}
-                                          className="p-2 md:p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-md transition-colors"
-                                          title="Editar"
-                                        >
-                                          <Edit3 size={16} />
-                                        </button>
-                                        <button 
-                                          onClick={() => setConfirmDeleteNoteId(note.id)}
-                                          className="p-2 md:p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md transition-colors"
-                                          title="Eliminar"
-                                        >
-                                          <Trash2 size={16} />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="prose prose-sm md:prose-base dark:prose-invert prose-amber max-w-none text-gray-700 dark:text-gray-300 font-serif leading-relaxed mb-4">
-                                    <ReactMarkdown>{note.content}</ReactMarkdown>
-                                  </div>
-
-                                  {note.audioData && (
-                                    <div className="mb-4 bg-gray-50 dark:bg-black/20 rounded-2xl p-3 border border-gray-100 dark:border-white/5 flex flex-col gap-2">
-                                      <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center shrink-0">
-                                          <Play size={14} className="text-black ml-0.5" />
-                                        </div>
-                                        <div className="flex flex-col">
-                                          <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Audio {note.audioStartTime !== undefined ? 'del Fragmento' : 'de la Sesión'}</span>
-                                          {note.audioStartTime !== undefined && (
-                                            <span className="text-[10px] font-mono text-amber-600 dark:text-amber-500">
-                                              Segmento: {formatTime(note.audioStartTime)} - {note.audioEndTime !== undefined ? formatTime(note.audioEndTime) : '??'}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <audio 
-                                        onPlay={(e) => {
-                                          const audio = e.currentTarget;
-                                          if (note.audioStartTime !== undefined) {
-                                            audio.currentTime = note.audioStartTime;
-                                          }
-                                        }}
-                                        onTimeUpdate={(e) => {
-                                          const audio = e.currentTarget;
-                                          if (note.audioEndTime !== undefined && audio.currentTime >= note.audioEndTime) {
-                                            audio.pause();
-                                            audio.currentTime = note.audioStartTime || 0;
-                                          }
-                                        }}
-                                        src={`data:audio/webm;base64,${note.audioData}`} 
-                                        controls 
-                                        className="h-8 w-full filter grayscale invert opacity-60 dark:opacity-80" 
-                                      />
-                                    </div>
-                                  )}
-
-                                  {note.relatedNoteIds && note.relatedNoteIds.length > 0 && (
-                                    <div className="pt-4 border-t border-gray-50 dark:border-white/5 mt-4">
-                                      <span className="text-[10px] text-gray-400 dark:text-gray-600 font-black uppercase tracking-widest mb-3 block">Ideas Relacionadas</span>
-                                      <div className="flex flex-wrap gap-2">
-                                        {note.relatedNoteIds.map(relId => {
-                                          const relNote = notes.find(n => n.id === relId);
-                                          if (!relNote) return null;
-                                          return (
-                                            <button
-                                              key={relId}
-                                              onClick={() => {
-                                                const element = document.getElementById(`note-${relId}`);
-                                                element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                              }}
-                                              className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 hover:bg-amber-50 dark:hover:bg-amber-500/10 px-3 py-1.5 rounded-xl border border-gray-100 dark:border-white/10 hover:border-amber-100 dark:hover:border-amber-500/20 transition-all text-xs text-gray-600 dark:text-gray-400 truncate max-w-[200px]"
-                                            >
-                                              <ExternalLink size={12} className="text-amber-500" />
-                                              <span className="truncate">{relNote.content.substring(0, 30)}...</span>
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  )}
-                                </motion.div>
-                              ))}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  ))}
                 </div>
               </motion.div>
             ) : activeTab === 'glossary' ? (
@@ -1726,7 +1838,7 @@ Devuelve estrictamente un JSON con este formato exacto:
                       <span>{isGeneratingCards ? 'Conectando...' : 'Generar Baraja'}</span>
                     </motion.button>
                     
-                    {flashcards.length > 0 && (
+                    {bookFlashcards.length > 0 && (
                       <motion.button
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
@@ -1740,7 +1852,7 @@ Devuelve estrictamente un JSON con este formato exacto:
                   </div>
                 </div>
 
-                {flashcards.length === 0 ? (
+                {bookFlashcards.length === 0 ? (
                   <div className="text-center py-24 bg-white dark:bg-gray-900 rounded-[2.5rem] border border-gray-100 dark:border-white/5 shadow-xl dark:shadow-none">
                     <div className="w-20 h-20 bg-amber-50 dark:bg-amber-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
                       <Zap size={36} className="text-amber-500" />
@@ -1752,11 +1864,11 @@ Devuelve estrictamente un JSON con este formato exacto:
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {flashcards.map(card => (
+                    {bookFlashcards.map(card => (
                       <FlashcardItem 
                         key={card.id} 
                         card={card} 
-                        onDelete={() => setFlashcards(prev => prev.filter(c => c.id !== card.id))} 
+                        onDelete={() => onDeleteFlashcard(card.id)}
                       />
                     ))}
                   </div>
@@ -1793,28 +1905,43 @@ Devuelve estrictamente un JSON con este formato exacto:
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {insights.map((insight) => (
+                  {bookInsights.map((insight) => (
                     <motion.div
                       key={insight.id}
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       whileHover={{ y: -5 }}
-                      onClick={() => {
-                        setCurrentInput(`Háblame más sobre este insight: "${insight.title}". ${insight.description}`);
-                        setActiveTab('chat');
-                      }}
                       className="bg-white dark:bg-gray-900 p-8 rounded-[2.5rem] border border-gray-100 dark:border-white/5 shadow-xl shadow-gray-200/50 dark:shadow-none flex flex-col items-start gap-4 relative overflow-hidden group cursor-pointer hover:border-amber-500/50 transition-all"
                     >
-                      <div className={`p-4 rounded-3xl mb-2 text-white shadow-lg transition-transform group-hover:scale-110 ${insight.type === 'epiphany' ? 'bg-amber-500 shadow-amber-500/20' : insight.type === 'application' ? 'bg-green-500 shadow-green-500/20' : 'bg-blue-500 shadow-blue-500/20'}`}>
-                        {insight.type === 'epiphany' ? <Sparkles size={24} /> : insight.type === 'application' ? <Link2 size={24} /> : <Zap size={24} />}
+                      <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteInsight(insight.id);
+                          }}
+                          className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
-                      <h4 className="text-xl font-display font-black text-gray-900 dark:text-white uppercase tracking-tight">{insight.title}</h4>
-                      <p className="text-gray-600 dark:text-gray-400 font-serif leading-relaxed text-sm md:text-base">
-                         {insight.description}
-                      </p>
-                      <div className="mt-auto pt-4 flex items-center gap-2 text-amber-500 font-black text-[10px] uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span>Preguntar al Tutor</span>
-                        <ArrowRight size={12} />
+                      <div 
+                        onClick={() => {
+                          setCurrentInput(`Háblame más sobre este insight: "${insight.title}". ${insight.description}`);
+                          setActiveTab('chat');
+                        }}
+                        className="w-full h-full"
+                      >
+                        <div className={`p-4 rounded-3xl mb-4 text-white shadow-lg transition-transform group-hover:scale-110 w-fit ${insight.type === 'epiphany' ? 'bg-amber-500 shadow-amber-500/20' : insight.type === 'application' ? 'bg-green-500 shadow-green-500/20' : 'bg-blue-500 shadow-blue-500/20'}`}>
+                          {insight.type === 'epiphany' ? <Sparkles size={24} /> : insight.type === 'application' ? <Link2 size={24} /> : <Zap size={24} />}
+                        </div>
+                        <h4 className="text-xl font-display font-black text-gray-900 dark:text-white uppercase tracking-tight">{insight.title}</h4>
+                        <p className="text-gray-600 dark:text-gray-400 font-serif leading-relaxed text-sm md:text-base mt-2">
+                           {insight.description}
+                        </p>
+                        <div className="mt-6 flex items-center gap-2 text-amber-500 font-black text-[10px] uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span>Preguntar al Tutor</span>
+                          <ArrowRight size={12} />
+                        </div>
                       </div>
                     </motion.div>
                   ))}
@@ -1895,7 +2022,7 @@ Devuelve estrictamente un JSON con este formato exacto:
                     </div>
                   </div>
                   <button 
-                    onClick={() => setChatMessages([])} 
+                    onClick={() => onClearChat(book.id)} 
                     className="p-2 text-gray-300 dark:text-gray-600 hover:text-red-500 transition-colors"
                     title="Limpiar chat"
                   >
@@ -1904,7 +2031,7 @@ Devuelve estrictamente un JSON con este formato exacto:
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-gray-50/10 dark:bg-black/20 no-scrollbar">
-                  {chatMessages.length === 0 && (
+                  {bookChatMessages.length === 0 && (
                     <div className="text-center py-20 px-8">
                       <div className="w-28 h-28 bg-white dark:bg-white/5 rounded-[3rem] flex items-center justify-center mx-auto mb-8 shadow-xl border border-gray-50 dark:border-white/5 dark:shadow-none">
                         <Sparkles size={48} className="text-amber-500" />
@@ -1915,7 +2042,7 @@ Devuelve estrictamente un JSON con este formato exacto:
                       </p>
                     </div>
                   )}
-                  {chatMessages.map((msg, i) => (
+                  {bookChatMessages.map((msg, i) => (
                     <motion.div 
                       key={i} 
                       initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
@@ -2003,7 +2130,7 @@ Devuelve estrictamente un JSON con este formato exacto:
 
       {isQuizMode && (
         <FlashcardQuiz 
-          flashcards={flashcards} 
+          flashcards={bookFlashcards} 
           onClose={() => setIsQuizMode(false)} 
         />
       )}

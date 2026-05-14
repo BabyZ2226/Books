@@ -49,11 +49,54 @@
         "id": { "type": "string" },
         "userId": { "type": "string" },
         "bookId": { "type": "string" },
-        "term": { "type": "string" },
+        "word": { "type": "string" },
         "definition": { "type": "string" },
         "createdAt": { "type": "number" }
       },
-      "required": ["id", "userId", "bookId", "term", "definition", "createdAt"]
+      "required": ["id", "userId", "bookId", "word", "definition", "createdAt"]
+    },
+    "Flashcard": {
+      "title": "Flashcard",
+      "description": "A study flashcard for a book",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bookId": { "type": "string" },
+        "question": { "type": "string" },
+        "answer": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "bookId", "question", "answer", "createdAt"]
+    },
+    "Insight": {
+      "title": "Insight",
+      "description": "AI-generated insight for a book",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bookId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["connection", "epiphany", "application"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "bookId", "title", "description", "type", "createdAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A message in a chat with the AI tutor for a specific book",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bookId": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "userId", "bookId", "role", "content", "timestamp"]
     }
   },
   "firestore": {
@@ -68,6 +111,18 @@
     "/terms/{termId}": {
       "schema": { "$ref": "#/entities/GlossaryTerm" },
       "description": "Glossary terms for all books"
+    },
+    "/flashcards/{cardId}": {
+      "schema": { "$ref": "#/entities/Flashcard" },
+      "description": "Flashcards for all books"
+    },
+    "/insights/{insightId}": {
+      "schema": { "$ref": "#/entities/Insight" },
+      "description": "Insights for all books"
+    },
+    "/chat_messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Chat history for books"
     }
   }
 }
