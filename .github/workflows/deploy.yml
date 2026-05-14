@@ -16,9 +16,9 @@ jobs:
           node-version: '20'
       - name: Install dependencies
         run: npm install
-      - name: Build
+      - name: Build project
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
         run: npm run build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
