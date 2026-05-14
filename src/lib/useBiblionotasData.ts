@@ -133,8 +133,21 @@ export function useBiblionotasData() {
   const addOrUpdateNote = async (note: Note) => {
     try {
       if (!note.userId) note.userId = auth.currentUser!.uid;
+      
+      // Validation for Firestore document size (1MB limit)
+      // Base64 increases size by ~33%. content can also be large.
+      if (note.audioData) {
+        const audioSize = note.audioData.length;
+        if (audioSize > 800000) { // ~800KB limit for audio string
+          throw new Error("El audio es demasiado grande para guardarse en la nube. Intenta con fragmentos más cortos.");
+        }
+      }
+
       await setDoc(doc(db, 'notes', note.id), sanitizeForFirestore(note));
     } catch (e) {
+      if (e instanceof Error && e.message.includes("audio es demasiado grande")) {
+        alert(e.message);
+      }
       handleFirestoreError(e, OperationType.WRITE, 'notes');
     }
   };

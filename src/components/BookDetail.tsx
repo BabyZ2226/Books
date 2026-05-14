@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ArrowLeft, BookOpen, Trash2, Edit3, Image as ImageIcon, Save, Plus, Star, BookText, GraduationCap, Sparkles, Loader2, Download, Mic, Square, Pause, Play, Send, Brain, MessageSquare, Zap, RotateCcw, BrainCircuit, Link2, ExternalLink, X, Maximize2, ChevronLeft, ChevronRight, List, LayoutGrid } from 'lucide-react';
+import { ArrowLeft, BookOpen, Trash2, Edit3, Image as ImageIcon, Save, Plus, Star, BookText, GraduationCap, Sparkles, Loader2, Download, Mic, Square, Pause, Play, Send, Brain, MessageSquare, Zap, RotateCcw, BrainCircuit, Link2, ExternalLink, X, Maximize2, ChevronLeft, ChevronRight, List, LayoutGrid, FolderClosed, FolderOpen, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { Glossary } from './Glossary';
@@ -83,7 +83,7 @@ const FlashcardItem = ({ card, onDelete }: { card: Flashcard, onDelete: () => vo
 };
 
 export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteBook, onSaveNote, onDeleteNote, onToggleNoteFavorite, onAddTerm, onDeleteTerm }: Props) {
-  const [activeTab, setActiveTab] = useState<'notes' | 'glossary' | 'flashcards' | 'chat' | 'insights' | 'recommendations' | 'stats'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'glossary' | 'flashcards' | 'chat' | 'insights' | 'recommendations'>('notes');
   const [isQuizMode, setIsQuizMode] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [currentNote, setCurrentNote] = useState('');
@@ -116,6 +116,7 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
   const [isAiResponding, setIsAiResponding] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processingPhase, setProcessingPhase] = useState("");
+  const audioInputRef = useRef<HTMLInputElement>(null);
   const [pendingAudio, setPendingAudio] = useLocalStorage<string | null>(`pending-audio-${book.id}`, null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -127,6 +128,72 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
       processAudio(pendingAudio);
     }
   }, []);
+
+  const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({});
+
+  const groupedNotesList = useMemo(() => {
+    const groups: Record<string, Note[]> = {};
+    
+    const filtered = notes.filter(note => {
+      if (showFavoritesOnly) return note.isFavorite;
+      return true;
+    });
+
+    filtered.forEach(note => {
+      let chapter = "Reflexiones Generales";
+      if (note.reference) {
+        // Look for Chapter/Capítulo
+        const chapterMatch = note.reference.match(/(?:Capítulo|Chapter)\s*(\d+|[IVXLCDM]+|[A-Z])(?:\s+.*)?/i) || 
+                            note.reference.match(/(?:Cap\.)\s*(\d+)/i);
+        
+        if (chapterMatch) {
+          chapter = chapterMatch[0].split(/[/,]/)[0].trim();
+        } else {
+          // If no chapter mentioned but has reference, maybe it's just "Pág X"
+          // We'll group those together too
+          const parts = note.reference.split(/[/,]/);
+          if (parts[0].toLowerCase().includes('pág')) {
+            chapter = "Por Páginas";
+          } else {
+            chapter = parts[0].trim();
+          }
+        }
+      }
+      if (!groups[chapter]) groups[chapter] = [];
+      groups[chapter].push(note);
+    });
+
+    // Sort chapters: Try to extract number, Roman numeral, or just alpha
+    const sortedChapters = Object.keys(groups).sort((a, b) => {
+      if (a === "Reflexiones Generales") return 1;
+      if (b === "Reflexiones Generales") return -1;
+      
+      const aNum = parseInt(a.match(/\d+/)?.[0] || "0");
+      const bNum = parseInt(b.match(/\d+/)?.[0] || "0");
+      
+      if (aNum !== bNum) return aNum - bNum;
+      return a.localeCompare(b);
+    });
+
+    // Sort notes within chapters by page
+    sortedChapters.forEach(ch => {
+      groups[ch].sort((a, b) => {
+        const aPage = parseInt(a.reference?.match(/(?:Pág\.?|Página|p)\s*(\d+)/i)?.[1] || "0");
+        const bPage = parseInt(b.reference?.match(/(?:Pág\.?|Página|p)\s*(\d+)/i)?.[1] || "0");
+        if (aPage !== bPage) return aPage - bPage;
+        return b.createdAt - a.createdAt;
+      });
+    });
+
+    return { chapters: sortedChapters, groups };
+  }, [notes, showFavoritesOnly]);
+
+  const toggleChapter = (chapter: string) => {
+    setExpandedChapters(prev => ({
+      ...prev,
+      [chapter]: !prev[chapter]
+    }));
+  };
 
   const sortedNotes = useMemo(() => [...notes].sort((a, b) => {
     if (a.isFavorite && !b.isFavorite) return -1;
@@ -268,6 +335,25 @@ export function BookDetail({ book, notes, terms, onBack, onUpdateBook, onDeleteB
     }
   };
 
+  const handleAudioImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('audio/')) {
+      alert('Por favor, selecciona un archivo de audio válido.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onloadend = async () => {
+      const base64Audio = (reader.result as string).split(',')[1];
+      await processAudio(base64Audio);
+    };
+    // Reset input
+    if (audioInputRef.current) audioInputRef.current.value = '';
+  };
+
   const processAudio = async (base64Audio: string) => {
     try {
       setIsProcessingAudio(true);
@@ -407,7 +493,7 @@ Si no detectas una referencia clara a una página o capítulo, usa una descripci
       const prompt = `Proporciona un breve resumen sin spoilers del libro "${book.title}" escrito por "${book.author}". Devuelve solo el texto del resumen, sin introducciones ni comillas.`;
       
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
       });
       
@@ -521,7 +607,7 @@ Notas:
 ${notes.map(n => n.content).join('\n')}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
         config: { responseMimeType: 'application/json' }
       });
@@ -563,7 +649,7 @@ Devuelve estrictamente un JSON con este formato exacto:
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
         config: { responseMimeType: 'application/json' }
       });
@@ -643,13 +729,22 @@ Devuelve estrictamente un JSON con este formato exacto:
     setIsEditingNote(true);
   };
 
-  const saveNote = () => {
+  const [isSavingNote, setIsSavingNote] = useState(false);
+
+  const saveNote = async () => {
     if (!currentNote.trim()) return;
-    onSaveNote(book.id, currentNote, currentReference.trim() || undefined, editingNoteId);
-    setIsEditingNote(false);
-    setCurrentNote('');
-    setCurrentReference('');
-    setEditingNoteId(undefined);
+    setIsSavingNote(true);
+    try {
+      await onSaveNote(book.id, currentNote, currentReference.trim() || undefined, editingNoteId);
+      setIsEditingNote(false);
+      setCurrentNote('');
+      setCurrentReference('');
+      setEditingNoteId(undefined);
+    } catch (error) {
+      console.error('Error saving note:', error);
+    } finally {
+      setIsSavingNote(false);
+    }
   };
 
   const handleSaveSummary = () => {
@@ -1067,18 +1162,6 @@ Devuelve estrictamente un JSON con este formato exacto:
               )}
             </button>
             <button
-              onClick={() => setActiveTab('stats')}
-              className={`pb-4 text-xs md:text-sm uppercase tracking-[0.2em] font-black transition-all relative whitespace-nowrap px-2 ${activeTab === 'stats' ? 'text-gray-900 dark:text-white' : 'text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400'}`}
-            >
-              <div className="flex items-center space-x-2">
-                <LayoutGrid size={16} />
-                <span>Estadísticas</span>
-              </div>
-              {activeTab === 'stats' && (
-                <motion.div layoutId="activeTabIndicator" className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500 rounded-full" />
-              )}
-            </button>
-            <button
               onClick={() => setActiveTab('chat')}
               className={`pb-4 text-xs md:text-sm uppercase tracking-[0.2em] font-black transition-all relative whitespace-nowrap px-2 ${activeTab === 'chat' ? 'text-gray-900 dark:text-white' : 'text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400'}`}
             >
@@ -1186,18 +1269,37 @@ Devuelve estrictamente un JSON con este formato exacto:
                         </div>
                       ) : (
                         <>
-                          <button
-                            onClick={startRecording}
-                            disabled={isProcessingAudio}
-                            className="flex-1 flex items-center justify-center space-x-3 bg-white/10 hover:bg-white/20 text-white px-6 py-4 rounded-[1.75rem] text-[10px] font-black transition-all border border-white/5 active:scale-95 uppercase tracking-widest"
-                          >
-                            {isProcessingAudio ? (
-                              <Loader2 size={18} className="animate-spin" />
-                            ) : (
-                              <Mic size={18} className="text-amber-400" />
-                            )}
-                            <span>{isProcessingAudio ? 'PROCESANDO...' : 'GRABAR NOTA IA'}</span>
-                          </button>
+                          <div className="flex-1 flex gap-2">
+                            <button
+                              onClick={startRecording}
+                              disabled={isProcessingAudio}
+                              className="flex-1 flex items-center justify-center space-x-3 bg-white/10 hover:bg-white/20 text-white px-6 py-4 rounded-[1.75rem] text-[10px] font-black transition-all border border-white/5 active:scale-95 uppercase tracking-widest"
+                            >
+                              {isProcessingAudio ? (
+                                <Loader2 size={18} className="animate-spin" />
+                              ) : (
+                                <Mic size={18} className="text-amber-400" />
+                              )}
+                              <span>{isProcessingAudio ? 'PROCESANDO...' : 'GRABAR NOTA'}</span>
+                            </button>
+
+                            <button
+                              onClick={() => audioInputRef.current?.click()}
+                              disabled={isProcessingAudio}
+                              className="hidden sm:flex items-center justify-center space-x-3 bg-white/5 hover:bg-white/10 text-white px-6 py-4 rounded-[1.75rem] text-[10px] font-black transition-all border border-white/5 active:scale-95 uppercase tracking-widest"
+                              title="Importar archivo de audio"
+                            >
+                              <Download size={18} className="text-blue-400" />
+                              <span>Importar</span>
+                            </button>
+                            <input
+                              type="file"
+                              ref={audioInputRef}
+                              onChange={handleAudioImport}
+                              accept="audio/*"
+                              className="hidden"
+                            />
+                          </div>
 
                           {activeTab === 'notes' && !isEditingNote && (
                             <motion.button 
@@ -1370,10 +1472,11 @@ Devuelve estrictamente un JSON con este formato exacto:
                           </button>
                           <button 
                             onClick={saveNote}
-                            className="flex items-center space-x-2 bg-gray-900 dark:bg-amber-500 hover:bg-gray-800 dark:hover:bg-amber-600 text-white dark:text-black px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm dark:shadow-none"
+                            disabled={isSavingNote}
+                            className="flex items-center space-x-2 bg-gray-900 dark:bg-amber-500 hover:bg-gray-800 dark:hover:bg-amber-600 text-white dark:text-black px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm dark:shadow-none disabled:opacity-50"
                           >
-                            <Save size={16} />
-                            <span>{editingNoteId ? 'Actualizar' : 'Guardar'}</span>
+                            {isSavingNote ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                            <span>{isSavingNote ? 'Guardando...' : (editingNoteId ? 'Actualizar' : 'Guardar')}</span>
                           </button>
                         </div>
                       </div>
@@ -1381,9 +1484,9 @@ Devuelve estrictamente un JSON con este formato exacto:
                   </motion.div>
                 )}
 
-                <div className={viewMode === 'grid' ? "columns-1 md:columns-2 gap-6 space-y-6 md:space-y-0" : "space-y-6"}>
-                  {filteredNotes.length === 0 && !isEditingNote && (
-                    <div className={`text-center py-12 px-6 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-2xl bg-gray-50 dark:bg-white/5 break-inside-avoid ${viewMode === 'grid' ? 'mb-6' : ''}`}>
+                <div className="space-y-6">
+                  {groupedNotesList.chapters.length === 0 && !isEditingNote && (
+                    <div className="text-center py-12 px-6 border-2 border-dashed border-gray-100 dark:border-white/5 rounded-2xl bg-gray-50 dark:bg-white/5">
                       <p className="text-gray-500 dark:text-gray-400 mb-2">
                         {showFavoritesOnly ? "No hay notas favoritas aún." : "Aún no has escrito notas para este libro."}
                       </p>
@@ -1398,152 +1501,189 @@ Devuelve estrictamente un JSON con este formato exacto:
                     </div>
                   )}
                   
-                  {filteredNotes.map(note => (
-                    <motion.div 
-                      key={note.id}
-                      id={`note-${note.id}`}
-                      layout
-                      className={`bg-white dark:bg-gray-900 p-6 rounded-2xl border transition-all group relative break-inside-avoid ${viewMode === 'grid' ? 'mb-6 md:mb-6 mt-0 inline-block w-full' : ''} ${isLinkingNoteId === note.id ? 'border-amber-500 ring-2 ring-amber-500/10 dark:ring-amber-500/20' : 'border-gray-100 dark:border-white/5 shadow-sm dark:shadow-none'}`}
-                    >
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-widest font-sans">
-                            {new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(note.createdAt)}
-                          </span>
-                          {note.reference && (
-                            <span className="px-3 py-1 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-500 text-[10px] font-black uppercase tracking-widest rounded-full border border-amber-100 dark:border-amber-500/20">
-                              {note.reference}
+                  {groupedNotesList.chapters.map(chapter => (
+                    <div key={chapter} className="space-y-4">
+                      <button
+                        onClick={() => toggleChapter(chapter)}
+                        className={`w-full flex items-center justify-between p-5 rounded-[2.5rem] border transition-all group ${expandedChapters[chapter] ? 'bg-amber-500 border-amber-400 shadow-xl shadow-amber-500/10' : 'bg-white dark:bg-white/5 border-gray-100 dark:border-white/10 hover:border-amber-500/30 shadow-sm'}`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`p-3 rounded-2xl transition-all ${expandedChapters[chapter] ? 'bg-white text-black' : 'bg-gray-100 dark:bg-white/10 text-gray-400 group-hover:text-amber-500'}`}>
+                            {expandedChapters[chapter] ? <FolderOpen size={24} /> : <FolderClosed size={24} />}
+                          </div>
+                          <div className="flex flex-col items-start">
+                            <h3 className={`font-display font-black uppercase tracking-tight text-lg ${expandedChapters[chapter] ? 'text-black' : 'text-gray-900 dark:text-white'}`}>{chapter}</h3>
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${expandedChapters[chapter] ? 'text-black/60' : 'text-gray-400'}`}>
+                              {groupedNotesList.groups[chapter].length} {groupedNotesList.groups[chapter].length === 1 ? 'Idea' : 'Ideas'} grabadas
                             </span>
-                          )}
+                          </div>
                         </div>
-                        <div className="flex space-x-2 items-center">
-                          {isLinkingNoteId && isLinkingNoteId !== note.id && (
-                            <motion.button
-                              initial={{ scale: 0.8, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={() => {
-                                handleToggleNoteRelation(isLinkingNoteId, note.id);
-                                setIsLinkingNoteId(null);
-                              }}
-                              className="flex items-center gap-2 bg-amber-500 text-black px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-amber-500/20"
-                            >
-                              <Link2 size={12} />
-                              Vincular Idea
-                            </motion.button>
-                          )}
-                          
-                          {isLinkingNoteId === note.id && (
-                            <button 
-                              onClick={() => setIsLinkingNoteId(null)}
-                              className="text-red-500 text-[10px] font-black uppercase tracking-widest"
-                            >
-                              Cancelar conexión
-                            </button>
-                          )}
+                        <div className={`transition-all duration-500 p-2 rounded-full ${expandedChapters[chapter] ? 'bg-black/10 rotate-180' : 'bg-gray-50 dark:bg-white/5'}`}>
+                          <ChevronDown size={20} className={expandedChapters[chapter] ? 'text-black' : 'text-gray-400'} />
+                        </div>
+                      </button>
 
-                          {!isLinkingNoteId && (
-                            <button 
-                              onClick={() => setIsLinkingNoteId(note.id)}
-                              className="p-2 text-gray-300 dark:text-gray-600 hover:text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="Relacionar con otra nota"
-                            >
-                              <Link2 size={18} />
-                            </button>
-                          )}
-
-                          <button 
-                            onClick={() => onToggleNoteFavorite(note.id)}
-                            className={`p-2 md:p-1.5 rounded-md transition-colors ${note.isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600 hover:text-amber-500 opacity-100 lg:opacity-0 lg:group-hover:opacity-100'}`}
-                            title={note.isFavorite ? "Quitar de favoritos" : "Marcar como importante"}
+                      <AnimatePresence>
+                        {expandedChapters[chapter] && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
                           >
-                            <Star size={18} fill={note.isFavorite ? "currentColor" : "none"} />
-                          </button>
-                          <div className="flex space-x-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity pl-1 border-l border-gray-100 dark:border-white/10">
-                            <button 
-                              onClick={() => openEditorForEdit(note)}
-                              className="p-2 md:p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-md transition-colors"
-                              title="Editar"
-                            >
-                              <Edit3 size={16} />
-                            </button>
-                            <button 
-                              onClick={() => setConfirmDeleteNoteId(note.id)}
-                              className="p-2 md:p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md transition-colors"
-                              title="Eliminar"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="prose prose-sm md:prose-base dark:prose-invert prose-amber max-w-none text-gray-700 dark:text-gray-300 font-serif leading-relaxed mb-4">
-                        <ReactMarkdown>{note.content}</ReactMarkdown>
-                      </div>
-
-                      {note.audioData && (
-                        <div className="mb-4 bg-gray-50 dark:bg-black/20 rounded-2xl p-3 border border-gray-100 dark:border-white/5 flex flex-col gap-2">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center shrink-0">
-                              <Play size={14} className="text-black ml-0.5" />
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Audio {note.audioStartTime !== undefined ? 'del Fragmento' : 'de la Sesión'}</span>
-                              {note.audioStartTime !== undefined && (
-                                <span className="text-[10px] font-mono text-amber-600 dark:text-amber-500">
-                                  Segmento: {formatTime(note.audioStartTime)} - {note.audioEndTime !== undefined ? formatTime(note.audioEndTime) : '??'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <audio 
-                            onPlay={(e) => {
-                              const audio = e.currentTarget;
-                              if (note.audioStartTime !== undefined) {
-                                audio.currentTime = note.audioStartTime;
-                              }
-                            }}
-                            onTimeUpdate={(e) => {
-                              const audio = e.currentTarget;
-                              if (note.audioEndTime !== undefined && audio.currentTime >= note.audioEndTime) {
-                                audio.pause();
-                                audio.currentTime = note.audioStartTime || 0;
-                              }
-                            }}
-                            src={`data:audio/webm;base64,${note.audioData}`} 
-                            controls 
-                            className="h-8 w-full filter grayscale invert opacity-60 dark:opacity-80" 
-                          />
-                        </div>
-                      )}
-
-                      {note.relatedNoteIds && note.relatedNoteIds.length > 0 && (
-                        <div className="pt-4 border-t border-gray-50 dark:border-white/5 mt-4">
-                          <span className="text-[10px] text-gray-400 dark:text-gray-600 font-black uppercase tracking-widest mb-3 block">Ideas Relacionadas</span>
-                          <div className="flex flex-wrap gap-2">
-                            {note.relatedNoteIds.map(relId => {
-                              const relNote = notes.find(n => n.id === relId);
-                              if (!relNote) return null;
-                              return (
-                                <button
-                                  key={relId}
-                                  onClick={() => {
-                                    const element = document.getElementById(`note-${relId}`);
-                                    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                  }}
-                                  className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 hover:bg-amber-50 dark:hover:bg-amber-500/10 px-3 py-1.5 rounded-xl border border-gray-100 dark:border-white/10 hover:border-amber-100 dark:hover:border-amber-500/20 transition-all text-xs text-gray-600 dark:text-gray-400 truncate max-w-[200px]"
+                            <div className={viewMode === 'grid' ? "columns-1 md:columns-2 gap-6 space-y-6 md:space-y-0 pt-2" : "space-y-6 pt-2"}>
+                              {groupedNotesList.groups[chapter].map(note => (
+                                <motion.div 
+                                  key={note.id}
+                                  id={`note-${note.id}`}
+                                  layout
+                                  className={`bg-white dark:bg-gray-900 p-6 rounded-2xl border transition-all group relative break-inside-avoid ${viewMode === 'grid' ? 'mb-6 md:mb-6 mt-0 inline-block w-full' : ''} ${isLinkingNoteId === note.id ? 'border-amber-500 ring-2 ring-amber-500/10 dark:ring-amber-500/20' : 'border-gray-100 dark:border-white/5 shadow-sm dark:shadow-none'}`}
                                 >
-                                  <ExternalLink size={12} className="text-amber-500" />
-                                  <span className="truncate">{relNote.content.substring(0, 30)}...</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </motion.div>
+                                  <div className="flex justify-between items-start mb-4">
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-widest font-sans">
+                                        {new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(note.createdAt)}
+                                      </span>
+                                      {note.reference && (
+                                        <span className="px-3 py-1 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-500 text-[10px] font-black uppercase tracking-widest rounded-full border border-amber-100 dark:border-amber-500/20">
+                                          {note.reference}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex space-x-2 items-center">
+                                      {isLinkingNoteId && isLinkingNoteId !== note.id && (
+                                        <motion.button
+                                          initial={{ scale: 0.8, opacity: 0 }}
+                                          animate={{ scale: 1, opacity: 1 }}
+                                          whileHover={{ scale: 1.05 }}
+                                          whileTap={{ scale: 0.95 }}
+                                          onClick={() => {
+                                            handleToggleNoteRelation(isLinkingNoteId, note.id);
+                                            setIsLinkingNoteId(null);
+                                          }}
+                                          className="flex items-center gap-2 bg-amber-500 text-black px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-amber-500/20"
+                                        >
+                                          <Link2 size={12} />
+                                          Vincular Idea
+                                        </motion.button>
+                                      )}
+                                      
+                                      {isLinkingNoteId === note.id && (
+                                        <button 
+                                          onClick={() => setIsLinkingNoteId(null)}
+                                          className="text-red-500 text-[10px] font-black uppercase tracking-widest"
+                                        >
+                                          Cancelar conexión
+                                        </button>
+                                      )}
+
+                                      {!isLinkingNoteId && (
+                                        <button 
+                                          onClick={() => setIsLinkingNoteId(note.id)}
+                                          className="p-2 text-gray-300 dark:text-gray-600 hover:text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                          title="Relacionar con otra nota"
+                                        >
+                                          <Link2 size={18} />
+                                        </button>
+                                      )}
+
+                                      <button 
+                                        onClick={() => onToggleNoteFavorite(note.id)}
+                                        className={`p-2 md:p-1.5 rounded-md transition-colors ${note.isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600 hover:text-amber-500 opacity-100 lg:opacity-0 lg:group-hover:opacity-100'}`}
+                                        title={note.isFavorite ? "Quitar de favoritos" : "Marcar como importante"}
+                                      >
+                                        <Star size={18} fill={note.isFavorite ? "currentColor" : "none"} />
+                                      </button>
+                                      <div className="flex space-x-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity pl-1 border-l border-gray-100 dark:border-white/10">
+                                        <button 
+                                          onClick={() => openEditorForEdit(note)}
+                                          className="p-2 md:p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-md transition-colors"
+                                          title="Editar"
+                                        >
+                                          <Edit3 size={16} />
+                                        </button>
+                                        <button 
+                                          onClick={() => setConfirmDeleteNoteId(note.id)}
+                                          className="p-2 md:p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md transition-colors"
+                                          title="Eliminar"
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="prose prose-sm md:prose-base dark:prose-invert prose-amber max-w-none text-gray-700 dark:text-gray-300 font-serif leading-relaxed mb-4">
+                                    <ReactMarkdown>{note.content}</ReactMarkdown>
+                                  </div>
+
+                                  {note.audioData && (
+                                    <div className="mb-4 bg-gray-50 dark:bg-black/20 rounded-2xl p-3 border border-gray-100 dark:border-white/5 flex flex-col gap-2">
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center shrink-0">
+                                          <Play size={14} className="text-black ml-0.5" />
+                                        </div>
+                                        <div className="flex flex-col">
+                                          <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Audio {note.audioStartTime !== undefined ? 'del Fragmento' : 'de la Sesión'}</span>
+                                          {note.audioStartTime !== undefined && (
+                                            <span className="text-[10px] font-mono text-amber-600 dark:text-amber-500">
+                                              Segmento: {formatTime(note.audioStartTime)} - {note.audioEndTime !== undefined ? formatTime(note.audioEndTime) : '??'}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <audio 
+                                        onPlay={(e) => {
+                                          const audio = e.currentTarget;
+                                          if (note.audioStartTime !== undefined) {
+                                            audio.currentTime = note.audioStartTime;
+                                          }
+                                        }}
+                                        onTimeUpdate={(e) => {
+                                          const audio = e.currentTarget;
+                                          if (note.audioEndTime !== undefined && audio.currentTime >= note.audioEndTime) {
+                                            audio.pause();
+                                            audio.currentTime = note.audioStartTime || 0;
+                                          }
+                                        }}
+                                        src={`data:audio/webm;base64,${note.audioData}`} 
+                                        controls 
+                                        className="h-8 w-full filter grayscale invert opacity-60 dark:opacity-80" 
+                                      />
+                                    </div>
+                                  )}
+
+                                  {note.relatedNoteIds && note.relatedNoteIds.length > 0 && (
+                                    <div className="pt-4 border-t border-gray-50 dark:border-white/5 mt-4">
+                                      <span className="text-[10px] text-gray-400 dark:text-gray-600 font-black uppercase tracking-widest mb-3 block">Ideas Relacionadas</span>
+                                      <div className="flex flex-wrap gap-2">
+                                        {note.relatedNoteIds.map(relId => {
+                                          const relNote = notes.find(n => n.id === relId);
+                                          if (!relNote) return null;
+                                          return (
+                                            <button
+                                              key={relId}
+                                              onClick={() => {
+                                                const element = document.getElementById(`note-${relId}`);
+                                                element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                              }}
+                                              className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 hover:bg-amber-50 dark:hover:bg-amber-500/10 px-3 py-1.5 rounded-xl border border-gray-100 dark:border-white/10 hover:border-amber-100 dark:hover:border-amber-500/20 transition-all text-xs text-gray-600 dark:text-gray-400 truncate max-w-[200px]"
+                                            >
+                                              <ExternalLink size={12} className="text-amber-500" />
+                                              <span className="truncate">{relNote.content.substring(0, 30)}...</span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </motion.div>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   ))}
                 </div>
               </motion.div>
@@ -1658,15 +1798,24 @@ Devuelve estrictamente un JSON con este formato exacto:
                       key={insight.id}
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="bg-white dark:bg-gray-900 p-8 rounded-[2.5rem] border border-gray-100 dark:border-white/5 shadow-xl shadow-gray-200/50 dark:shadow-none flex flex-col items-start gap-4 relative overflow-hidden"
+                      whileHover={{ y: -5 }}
+                      onClick={() => {
+                        setCurrentInput(`Háblame más sobre este insight: "${insight.title}". ${insight.description}`);
+                        setActiveTab('chat');
+                      }}
+                      className="bg-white dark:bg-gray-900 p-8 rounded-[2.5rem] border border-gray-100 dark:border-white/5 shadow-xl shadow-gray-200/50 dark:shadow-none flex flex-col items-start gap-4 relative overflow-hidden group cursor-pointer hover:border-amber-500/50 transition-all"
                     >
-                      <div className={`p-4 rounded-3xl mb-2 text-white shadow-lg ${insight.type === 'epiphany' ? 'bg-amber-500 shadow-amber-500/20' : insight.type === 'application' ? 'bg-green-500 shadow-green-500/20' : 'bg-blue-500 shadow-blue-500/20'}`}>
+                      <div className={`p-4 rounded-3xl mb-2 text-white shadow-lg transition-transform group-hover:scale-110 ${insight.type === 'epiphany' ? 'bg-amber-500 shadow-amber-500/20' : insight.type === 'application' ? 'bg-green-500 shadow-green-500/20' : 'bg-blue-500 shadow-blue-500/20'}`}>
                         {insight.type === 'epiphany' ? <Sparkles size={24} /> : insight.type === 'application' ? <Link2 size={24} /> : <Zap size={24} />}
                       </div>
-                      <h4 className="text-xl font-display font-black text-gray-900 dark:text-white">{insight.title}</h4>
+                      <h4 className="text-xl font-display font-black text-gray-900 dark:text-white uppercase tracking-tight">{insight.title}</h4>
                       <p className="text-gray-600 dark:text-gray-400 font-serif leading-relaxed text-sm md:text-base">
                          {insight.description}
                       </p>
+                      <div className="mt-auto pt-4 flex items-center gap-2 text-amber-500 font-black text-[10px] uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span>Preguntar al Tutor</span>
+                        <ArrowRight size={12} />
+                      </div>
                     </motion.div>
                   ))}
                 </div>
@@ -1724,13 +1873,6 @@ Devuelve estrictamente un JSON con este formato exacto:
                   ))}
                 </div>
               </motion.div>
-            ) : activeTab === 'stats' ? (
-              <BookStats 
-                book={book} 
-                notes={notes} 
-                flashcards={flashcards} 
-                terms={terms} 
-              />
             ) : (
               <motion.div
                 key="chat"
