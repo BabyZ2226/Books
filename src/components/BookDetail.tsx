@@ -6,7 +6,7 @@ import { Glossary } from './Glossary';
 import { BookStats } from './BookStats';
 import { FlashcardQuiz } from './FlashcardQuiz';
 import { ConfirmModal } from './ConfirmModal';
-import { GoogleGenAI } from '@google/genai';
+import { getAIClient, getGeminiApiKey, DEFAULT_TEXT_MODEL } from '../services/ai';
 import { Book, Note, GlossaryTerm, Flashcard, ChatMessage, BookStatus, Insight, BookRecommendation } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
@@ -31,6 +31,7 @@ interface Props {
   onDeleteInsight: (id: string) => void;
   onAddChatMessage: (bookId: string, message: ChatMessage) => void;
   onClearChat: (bookId: string) => void;
+  onOpenSettings: () => void;
 }
 
 const FlashcardItem = ({ card, onDelete }: { card: Flashcard, onDelete: () => void }) => {
@@ -315,7 +316,8 @@ export function BookDetail({
   onAddInsight,
   onDeleteInsight,
   onAddChatMessage,
-  onClearChat
+  onClearChat,
+  onOpenSettings
 }: Props) {
   const [activeTab, setActiveTab] = useState<'notes' | 'glossary' | 'flashcards' | 'chat' | 'insights' | 'recommendations'>('notes');
   const [isQuizMode, setIsQuizMode] = useState(false);
@@ -349,6 +351,17 @@ export function BookDetail({
   const [isAiResponding, setIsAiResponding] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processingPhase, setProcessingPhase] = useState("");
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const handleAIError = (error: any, context: string) => {
+    const message = error.message || String(error);
+    if (message === 'NO_API_KEY' || message.includes('API Key must be set')) {
+      setAiError('Para usar las funciones de IA necesitas configurar tu API Key en Ajustes.');
+    } else {
+      setAiError(`Error al ${context}: ${message}`);
+    }
+    console.error(`Error en ${context}:`, error);
+  };
   const [selectedChapter, setSelectedChapter] = useState<string | 'all'>('all');
   const audioInputRef = useRef<HTMLInputElement>(null);
   const [pendingAudio, setPendingAudio] = useState<string | null>(null);
@@ -613,7 +626,6 @@ export function BookDetail({
         });
       }, 1000);
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const prompt = `Actúa como un tutor literario de alto nivel especializado en adolescentes. He grabado un audio de hasta 30 minutos sobre el libro "${book.title}" de "${book.author}".
         
 Tu tarea:
@@ -640,21 +652,23 @@ Si no detectas una referencia clara a una página o capítulo, usa una descripci
 
       setProcessingPhase("Detectando referencias y páginas...");
       
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: {
+      const ai = getAIClient();
+      const result_ai = await ai.models.generateContent({
+        model: DEFAULT_TEXT_MODEL,
+        contents: [{
           parts: [
             { inlineData: { data: base64Audio, mimeType: 'audio/webm' } },
             { text: prompt }
           ]
-        },
+        }],
         config: {
           responseMimeType: 'application/json'
         }
       });
 
       setProcessingPhase("Estructurando sabiduría...");
-      const result = JSON.parse(response.text || '{}');
+      const text = result_ai.text;
+      const result = JSON.parse(text || '{}');
       
       // Save multiple notes if they exist
       if (result.notes && Array.isArray(result.notes)) {
@@ -697,7 +711,7 @@ Si no detectas una referencia clara a una página o capítulo, usa una descripci
       }, 1000);
 
     } catch (error) {
-      console.error('Error processing audio with Gemini:', error);
+      handleAIError(error, 'procesar el audio');
       setProcessingPhase("Error en el análisis. Puedes reintentar.");
       setIsProcessingAudio(false);
     } finally {
@@ -733,22 +747,20 @@ Si no detectas una referencia clara a una página o capítulo, usa una descripci
   const handleGenerateSummary = async () => {
     try {
       setIsGeneratingSummary(true);
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = getAIClient();
       const prompt = `Proporciona un breve resumen sin spoilers del libro "${book.title}" escrito por "${book.author}". Devuelve solo el texto del resumen, sin introducciones ni comillas.`;
       
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
+      const result = await ai.models.generateContent({
+        model: DEFAULT_TEXT_MODEL,
+        contents: prompt
       });
-      
-      const summary = response.text || '';
+      const summary = result.text || '';
       if (summary) {
         setSummaryText(summary);
         setIsEditingSummary(true);
       }
     } catch (error) {
-      console.error('Error generating summary:', error);
-      alert('Hubo un error al generar el resumen. Revisa la conexión o intenta más tarde.');
+      handleAIError(error, 'generar el resumen');
     } finally {
       setIsGeneratingSummary(false);
     }
@@ -798,16 +810,17 @@ Si no detectas una referencia clara a una página o capítulo, usa una descripci
     }
     try {
       setIsGeneratingCards(true);
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = getAIClient();
       const prompt = `Basándote en estas notas del libro "${book.title}", genera 5 flashcards de estudio para un ADOLESCENTE (12-18 años) para reforzar el aprendizaje. Cada flashcard debe tener una Pregunta corta y una Respuesta clara pero explicada de forma sencilla. Devuelve estrictamente un JSON con formato: {"flashcards": [{"question": "...", "answer": "..."}]}. Notas:\n${notes.map(n => n.content).join('\n')}`;
       
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        model: DEFAULT_TEXT_MODEL,
+        contents: [{ parts: [{ text: prompt }] }],
         config: { responseMimeType: 'application/json' }
       });
       
-      const result = JSON.parse(response.text || '{}');
+      const text = response.text;
+      const result = JSON.parse(text || '{}');
       if (result.flashcards) {
         for (const c of result.flashcards) {
           onAddFlashcard({
@@ -821,7 +834,7 @@ Si no detectas una referencia clara a una página o capítulo, usa una descripci
         }
       }
     } catch (error) {
-      console.error('Error generating cards:', error);
+      handleAIError(error, 'generar flashcards');
     } finally {
       setIsGeneratingCards(false);
     }
@@ -834,31 +847,32 @@ Si no detectas una referencia clara a una página o capítulo, usa una descripci
     }
     try {
       setIsGeneratingInsights(true);
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = getAIClient();
       const prompt = `Analiza profundamente las siguientes notas del libro "${book.title}" de ${book.author} pensando en un lector ADOLESCENTE.
-Tu objetivo es encontrar 3 conexiones ocultas, patrones profundos, o revelaciones (insights) únicas explicadas de forma cautivadora para un joven. 
-Cada insight debe pertenecer a una de estas categorías: 'connection' (conecta ideas del libro), 'epiphany' (una revelación filosófica o profunda) o 'application' (una aplicación revolucionaria a la vida real del adolescente).
-Devuelve estrictamente un JSON con este formato exacto:
-{
-  "insights": [
-    {
-      "title": "Título corto y cautivador del insight",
-      "description": "Explicación detallada y clara de la conexión o revelación descubierta.",
-      "type": "connection" | "epiphany" | "application"
-    }
-  ]
-}
-
-Notas:
-${notes.map(n => n.content).join('\n')}`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: { responseMimeType: 'application/json' }
-      });
-      
-      const result = JSON.parse(response.text || '{}');
+ Tu objetivo es encontrar 3 conexiones ocultas, patrones profundos, o revelaciones (insights) únicas explicadas de forma cautivadora para un joven. 
+ Cada insight debe pertenecer a una de estas categorías: 'connection' (conecta ideas del libro), 'epiphany' (una revelación filosófica o profunda) o 'application' (una aplicación revolucionaria a la vida real del adolescente).
+ Devuelve estrictamente un JSON con este formato exacto:
+ {
+   "insights": [
+     {
+       "title": "Título corto y cautivador del insight",
+       "description": "Explicación detallada y clara de la conexión o revelación descubierta.",
+       "type": "connection" | "epiphany" | "application"
+     }
+   ]
+ }
+ 
+ Notas:
+ ${notes.map(n => n.content).join('\n')}`;
+ 
+       const response = await ai.models.generateContent({
+         model: DEFAULT_TEXT_MODEL,
+         contents: [{ parts: [{ text: prompt }] }],
+         config: { responseMimeType: 'application/json' }
+       });
+       
+       const text = response.text;
+       const result = JSON.parse(text || '{}');
       if (result.insights) {
         for (const c of result.insights) {
           onAddInsight({
@@ -873,7 +887,7 @@ ${notes.map(n => n.content).join('\n')}`;
         }
       }
     } catch (error) {
-      console.error('Error generating insights:', error);
+      handleAIError(error, 'generar insights');
     } finally {
       setIsGeneratingInsights(false);
     }
@@ -882,27 +896,28 @@ ${notes.map(n => n.content).join('\n')}`;
   const handleGenerateRecommendations = async () => {
     try {
       setIsGeneratingRecommendations(true);
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = getAIClient();
       const prompt = `Basándote en el libro "${book.title}" de ${book.author}, sugiere 3 libros similares que sean clásicos de dominio público u obras de acceso libre/gratuito. Para cada uno, proporciona el título, autor, una breve razón de la recomendación, y un enlace directo a una fuente legítima gratuita (como Project Gutenberg o similar) si es posible.
-Devuelve estrictamente un JSON con este formato exacto:
-{
-  "recommendations": [
-    {
-      "title": "Título del libro",
-      "author": "Autor",
-      "reason": "Por qué es una buena recomendación",
-      "pdfUrl": "URL opcional al PDF gratuito o fuente"
-    }
-  ]
-}`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: { responseMimeType: 'application/json' }
-      });
-      
-      const result = JSON.parse(response.text || '{}');
+ Devuelve estrictamente un JSON con este formato exacto:
+ {
+   "recommendations": [
+     {
+       "title": "Título del libro",
+       "author": "Autor",
+       "reason": "Por qué es una buena recomendación",
+       "pdfUrl": "URL opcional al PDF gratuito o fuente"
+     }
+   ]
+ }`;
+ 
+       const response = await ai.models.generateContent({
+         model: DEFAULT_TEXT_MODEL,
+         contents: [{ parts: [{ text: prompt }] }],
+         config: { responseMimeType: 'application/json' }
+       });
+       
+       const text = response.text;
+       const result = JSON.parse(text || '{}');
       if (result.recommendations) {
         const newRecommendations: BookRecommendation[] = result.recommendations.map((c: any) => ({
           id: Math.random().toString(36).substr(2, 9),
@@ -916,7 +931,7 @@ Devuelve estrictamente un JSON con este formato exacto:
         setRecommendations(newRecommendations);
       }
     } catch (error) {
-      console.error('Error generating recommendations:', error);
+      handleAIError(error, 'generar recomendaciones');
     } finally {
       setIsGeneratingRecommendations(false);
     }
@@ -936,7 +951,7 @@ Devuelve estrictamente un JSON con este formato exacto:
     setIsAiResponding(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = getAIClient();
       // Construct context from current book state
       const summaryContext = book.summary ? `Resumen: ${book.summary}` : "";
       const notesContext = notes.length > 0 ? `Notas del usuario: ${notes.map(n => n.content).join(' | ')}` : "";
@@ -945,19 +960,20 @@ Devuelve estrictamente un JSON con este formato exacto:
       const prompt = `${context}\n\nPregunta del usuario: ${currentInput}\n\nResponde como un tutor literario experto y cercano, especializado en ADOLESCENTES. Usa un lenguaje claro, motivador y evita formalismos excesivos, ayudando al joven a conectar con la historia y profundizar en su lectura de forma amena.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [{ role: 'user', parts: [{ text: prompt }] }]
+        model: DEFAULT_TEXT_MODEL,
+        contents: prompt
       });
+      const text = response.text;
 
       const aiResponse: ChatMessage = {
         role: 'assistant',
-        content: response.text || "Lo siento, no pude procesar tu pregunta.",
+        content: text || "Lo siento, no pude procesar tu pregunta.",
         timestamp: Date.now()
       };
 
       onAddChatMessage(book.id, aiResponse);
     } catch (error) {
-      console.error('Chat error:', error);
+      handleAIError(error, 'enviar el mensaje');
     } finally {
       setIsAiResponding(false);
     }
@@ -1060,6 +1076,46 @@ Devuelve estrictamente un JSON con este formato exacto:
         <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
         <span className="font-medium text-sm">Volver a la biblioteca</span>
       </motion.button>
+
+      <AnimatePresence>
+        {aiError && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mb-8 p-6 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-[2rem] flex flex-col sm:flex-row gap-4 items-center justify-between shadow-xl shadow-red-500/5"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-red-100 dark:bg-red-500/20 rounded-2xl text-red-600 dark:text-red-400 shrink-0">
+                <Brain size={20} />
+              </div>
+              <p className="text-sm text-red-900/80 dark:text-red-400/80 font-serif leading-relaxed">
+                {aiError}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 justify-end">
+              {aiError.includes('Ajustes') && (
+                <button
+                  onClick={() => {
+                    setAiError(null);
+                    onOpenSettings();
+                  }}
+                  className="w-full sm:w-auto px-6 py-3 bg-red-600 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
+                >
+                  Configurar Key
+                </button>
+              )}
+              <button
+                onClick={() => setAiError(null)}
+                className="p-2.5 text-red-300 dark:text-gray-600 hover:text-red-600 transition-colors"
+                title="Cerrar"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex flex-col lg:flex-row gap-8 lg:gap-16 mb-12">
         <div className="w-full max-w-[240px] sm:max-w-xs mx-auto lg:mx-0 lg:w-56 shrink-0 flex flex-col gap-6">

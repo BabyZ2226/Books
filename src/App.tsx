@@ -6,13 +6,14 @@ import { BookDetail } from './components/BookDetail';
 import { AddBookModal } from './components/AddBookModal';
 import { RecommendationModal } from './components/RecommendationModal';
 import { CategoryBrowser } from './components/CategoryBrowser';
-import { GoogleGenAI } from '@google/genai';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookMarked, Plus, Search, Clock, Calendar, User, Type, ArrowUp, ArrowDown, BookOpen, Loader2, ExternalLink, Zap, ArrowRight, LogOut } from 'lucide-react';
 import { useBiblionotasData } from './lib/useBiblionotasData';
 import { auth } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { LoginScreen } from './components/LoginScreen';
+import { SettingsModal } from './components/SettingsModal';
+import { Settings, Key } from 'lucide-react';
 
 const OPEN_LIBRARY_CATEGORIES = [
   { name: 'Tendencias Globales', query: 'fiction' },
@@ -68,6 +69,7 @@ function BiblionotasApp() {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [browsingCategory, setBrowsingCategory] = useState<{name: string, query: string} | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
   const [sortBy, setSortBy] = useState<SortOption>('lastUpdated');
@@ -288,7 +290,14 @@ function BiblionotasApp() {
             <h1 className="text-3xl font-display font-black tracking-tighter uppercase dark:text-white leading-none">BIBLIO<span className="text-amber-500 dark:text-white/40">NOTAS</span></h1>
           </div>
           
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 md:gap-4">
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-3 bg-gray-100 dark:bg-gray-800 rounded-2xl text-gray-600 dark:text-amber-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all border border-transparent hover:border-amber-500/30"
+                title="Configurar API Key"
+              >
+                <Key size={18} />
+              </button>
               <button
                 onClick={() => auth.signOut()}
                 className="p-3 bg-gray-100 dark:bg-gray-800 rounded-2xl text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 transition-all group"
@@ -362,6 +371,7 @@ function BiblionotasApp() {
               onDeleteInsight={deleteInsight}
               onAddChatMessage={addChatMessage}
               onClearChat={clearChatMessages}
+              onOpenSettings={() => setIsSettingsOpen(true)}
             />
           ) : (
             <motion.div
@@ -526,6 +536,11 @@ function BiblionotasApp() {
         isOpen={isAddModalOpen} 
         onClose={() => setIsAddModalOpen(false)} 
         onAddBook={handleAddBook} 
+      />
+
+      <SettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
       />
     </div>
   );

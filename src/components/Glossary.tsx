@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { GlossaryTerm } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Trash2, Search, Loader2 } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
+import { getAIClient, DEFAULT_TEXT_MODEL } from '../services/ai';
 import { ConfirmModal } from './ConfirmModal';
 
 interface Props {
@@ -25,14 +25,14 @@ export function Glossary({ bookId, terms, onAddTerm, onDeleteTerm }: Props) {
     try {
       setIsCastingDefinition(true);
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = getAIClient();
       const prompt = `Proporciona una definición clara, sencilla y precisa de la palabra o frase "${word.trim()}", explicada de forma que un ADOLESCENTE (12-18 años) pueda entenderla fácilmente.${
         context.trim() ? ` El contexto donde se encontró es: "${context.trim()}". ` : ' '
       }Devuelve solo el texto de la definición, evitando tecnicismos innecesarios, sin introducciones ni comillas.`;
       
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
+        model: DEFAULT_TEXT_MODEL,
+        contents: prompt
       });
       
       const definition = response.text || 'Definición no disponible.';
@@ -51,8 +51,12 @@ export function Glossary({ bookId, terms, onAddTerm, onDeleteTerm }: Props) {
       setContext('');
       setIsAdding(false);
     } catch (error) {
-      console.error('Error fetching definition:', error);
-      alert('Hubo un error al buscar la definición. Revisa la conexión o intenta más tarde.');
+      if (error instanceof Error && (error.message === 'NO_API_KEY' || error.message.includes('API Key must be set'))) {
+        alert('Para usar la IA, por favor configura tu API Key en los ajustes (icono de llave en la cabecera).');
+      } else {
+        console.error('Error fetching definition:', error);
+        alert('Hubo un error al buscar la definición. Revisa la conexión o intenta más tarde.');
+      }
     } finally {
       setIsCastingDefinition(false);
     }
